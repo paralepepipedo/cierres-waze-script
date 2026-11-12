@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.2
+// @version      20.3
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.3: MENSAJES REDISEÑADOS (8 cartelitos): franja de color arriba (naranja reforzado en «Estas calles ya están en la cola») y cuerpo ordenado — chips, cajas, pasos —, texto a la izquierda, botón principal destacado y el peligroso aparte en rojo. Los avisos flotantes y las ventanas nativas no cambian.
 // v20.2: EL AVISO «ESTAS CALLES YA ESTÁN EN LA COLA» solo sale si el horario de lo que ya está en la cola SE CRUZA con el nuevo (antes avisaba por cualquier entrada con los mismos segmentos, aunque fuera otro día u hora: V1, V3…).
 // v20.1: UN MISMO TRAMO EN VARIAS VENTANAS. La web repite el tramo físico en cada horario (V1, V3…): ahora puede tomar los mismos segmentos en cada ventana (solo se evitan duplicados DENTRO de una ventana). 📍 Ubicar, el Play y «Tomar selección» ya no los bloquean; el amarillo, cuando no hay nada libre, marca solo la calzada pedida.
 // v20.0: AL ENVIAR UNA VENTANA A LA COLA el mapa vuelve a la vista en que estaba el analista (antes se quedaba donde terminaba el último paso, p. ej. alejado hacia la comuna).
@@ -13177,21 +13178,62 @@ const _cwElegirCiudad = async (host, comuna) => {
     return { item: t, vistos: r.vistos };
 };
 const _cwCartelQuitar = () => { try { const h = document.getElementById('cw-cartel-comuna'); if (h) h.remove(); } catch (e) { /* nada */ } };
+// [v20.3] CARTEL GENÉRICO REDISEÑADO. Franja de color arriba (tipo: 'aviso' ámbar · 'error' rojo · 'info' azul · 'naranja' naranja reforzado) + cuerpo ordenado, texto a la izquierda.
+// o = { tipo, icono, titulo, bloques: [...], botones: [{ k, txt, cls: 'pri'|'sec'|'peligro' } | { esp: true }] }  → devuelve la k del botón pulsado.
+// Bloques: { t: 'lead'|'nota'|'roja'|'riesgo', txt } · { t: 'chips', items: [{ tag, txt, em }] } · { t: 'estados', items: [{ c: 'ok'|'am'|'rj', txt }] } · { t: 'barra', pct }
+//          { t: 'dos', cajas: [{ ok, small, b, span }] } · { t: 'vs', a: { lbl, val }, b: { lbl, val } } · { t: 'pasos', items } · { t: 'opc', items }.  En los textos, **así** va en negrita.
+// Compatibilidad: sin «bloques», las «lineas» se muestran como párrafos (y un emoji al inicio del título pasa a ser el ícono).
+const _cwMd = s => escHtml(String(s == null ? '' : s)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 const _cwCartelElegir = o => new Promise(listo => {
     try {
         _cwCartelQuitar();
         const host = document.createElement('div'); host.id = 'cw-cartel-comuna';
         const root = host.attachShadow({ mode: 'open' });
-        const css = ':host { all: initial; } * { box-sizing: border-box; font-family: "Segoe UI", Arial, sans-serif; }'
-            + ' #c { position: fixed; top: 150px; left: 50%; transform: translateX(-50%); width: min(560px, 92vw); background: rgba(27,37,56,.96); color: #fff; border-radius: 18px; padding: 22px 26px; text-align: center; box-shadow: 0 8px 26px rgba(0,0,0,.35); z-index: 2147483001; pointer-events: none; }'
-            + ' #t { font-size: 28px; font-weight: 800; color: #ffb74d; line-height: 1.15; } #l { margin-top: 10px; font-size: 17px; line-height: 1.5; } #bs { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }'
-            + ' button { border: 0; border-radius: 10px; padding: 9px 20px; font-size: 17px; font-weight: 800; cursor: pointer; pointer-events: auto; background: #f57c00; color: #fff; } button:hover { background: #ef6c00; } button.sec { background: #455a64; } button.sec:hover { background: #37474f; }';
-        root.innerHTML = '<style>' + css + '</style><div id="c" role="alert"><div id="t"></div><div id="l"></div><div id="bs"></div></div>';
-        root.getElementById('t').textContent = o.titulo || '';
-        (o.lineas || []).forEach(x => { const d = document.createElement('div'); d.textContent = x; root.getElementById('l').appendChild(d); });
-        (o.botones || []).forEach(bt => { const b = document.createElement('button'); b.type = 'button'; b.textContent = bt.txt; if (bt.sec) b.className = 'sec'; b.addEventListener('click', () => { _cwCartelQuitar(); listo(bt.k); }); root.getElementById('bs').appendChild(b); });
+        const css = ':host { all: initial; } * { box-sizing: border-box; font-family: "Segoe UI", Roboto, Arial, sans-serif; }'
+            + ' #c { position: fixed; top: 150px; left: 50%; transform: translateX(-50%); width: min(560px, 94vw); max-height: calc(100vh - 170px); overflow: auto; background: #232b3b; color: #eef2f7; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); z-index: 2147483001; pointer-events: auto; font-size: 14px; }'
+            + ' .franja { display: flex; align-items: center; gap: 10px; padding: 11px 18px; font-size: 17px; color: #fff; } .franja .ic { font-size: 20px; } .franja b { font-weight: 700; }'
+            + ' .franja.aviso { background: #c77700; } .franja.error { background: #c62828; } .franja.info { background: #1565c0; } .franja.naranja { background: #f57c00; box-shadow: inset 0 -3px 0 #ffb74d; padding: 14px 18px; font-size: 18px; } .franja.naranja .ic { font-size: 22px; }'
+            + ' .cuerpo { padding: 14px 18px 16px; } .lead { margin: 0 0 10px; font-size: 15px; line-height: 1.4; } .lead b { color: #fff; } .roja { color: #ff8a80; } .chips + .lead { margin-top: 10px; } .nota-d { margin: 10px 0 0; font-size: 12.5px; color: #aab4c5; line-height: 1.4; }'
+            + ' .riesgo { margin-top: 10px; background: #4a2326; border: 1px solid #8a3b40; color: #ffd7d4; border-radius: 10px; padding: 8px 12px; font-size: 13.5px; line-height: 1.4; }'
+            + ' .chips { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; } .chips.fila { flex-direction: row; flex-wrap: wrap; } .chip { background: #2c3649; border-radius: 999px; padding: 4px 12px; font-size: 13.5px; display: flex; gap: 8px; align-items: center; max-width: 100%; }'
+            + ' .chip i { font-style: normal; background: #1d3b57; color: #64b5f6; border-radius: 999px; padding: 0 8px; font-weight: 700; } .chip em { font-style: normal; color: #aab4c5; font-size: 12.5px; }'
+            + ' .chip.ok { color: #66bb6a; } .chip.am { color: #ffca28; background: #43391d; } .chip.rj { color: #ff8a80; background: #4a2326; }'
+            + ' .barra { height: 8px; background: #1a2130; border-radius: 99px; overflow: hidden; margin-bottom: 10px; } .barra div { height: 100%; background: #66bb6a; }'
+            + ' .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .caja { background: #2c3649; border-radius: 10px; padding: 9px 12px; } .caja.ok { border: 1px solid #3d7a41; background: #1f4222; } .caja small { display: block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #aab4c5; margin-bottom: 3px; } .caja b { display: block; font-size: 14.5px; } .caja span { font-size: 12.5px; color: #aab4c5; }'
+            + ' .vs { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 4px 0; } .vs .n { text-align: center; } .vs .n span { display: block; font-size: 12px; color: #aab4c5; } .vs .n b { font-size: 24px; } .vs .n.mal b { color: #ff8a80; } .vs .n.bien b { color: #66bb6a; } .vs .fl { font-size: 22px; color: #aab4c5; }'
+            + ' .pasos2, .opc { display: flex; flex-direction: column; gap: 6px; } .pasos2 div { display: flex; gap: 10px; align-items: center; background: #2c3649; border-radius: 10px; padding: 7px 12px; } .pasos2 i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; background: #ff9800; color: #1c1300; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12.5px; flex: none; } .opc div { background: #2c3649; border-radius: 10px; padding: 7px 12px; font-size: 13.5px; line-height: 1.4; }'
+            + ' #bs { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; } .esp { flex: 1; } button { border: 0; border-radius: 10px; padding: 9px 16px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }'
+            + ' .pri { background: #ff9800; color: #1c1300; } .pri:hover { background: #ffa726; } .sec { background: #3a4660; color: #eef2f7; } .sec:hover { background: #46536f; } .peligro { background: transparent; color: #ff8a80; border: 1px solid #8a3b40; } .peligro:hover { background: #4a2326; }';
+        const tipo = o.tipo || 'aviso';
+        let ic = o.icono, ti = String(o.titulo || '');
+        if (ic == null) { const m = /^(\p{Extended_Pictographic}️?)\s*([\s\S]*)$/u.exec(ti); if (m) { ic = m[1]; ti = m[2]; } else ic = '⚠'; }
+        const lista = (arr, f) => arr.map(f).join('');
+        const bloque = b => {
+            switch (b.t) {
+                case 'lead': return '<p class="lead">' + _cwMd(b.txt) + '</p>';
+                case 'roja': return '<p class="lead roja">' + _cwMd(b.txt) + '</p>';
+                case 'nota': return '<p class="nota-d">' + _cwMd(b.txt) + '</p>';
+                case 'riesgo': return '<div class="riesgo">' + _cwMd(b.txt) + '</div>';
+                case 'chips': return '<div class="chips">' + lista(b.items || [], x => '<span class="chip">' + (x.tag ? '<i>' + escHtml(x.tag) + '</i>' : '') + _cwMd(x.txt) + (x.em ? ' <em>' + escHtml(x.em) + '</em>' : '') + '</span>') + '</div>';
+                case 'estados': return '<div class="chips fila">' + lista(b.items || [], x => '<span class="chip ' + escHtml(x.c || '') + '">' + _cwMd(x.txt) + '</span>') + '</div>';
+                case 'barra': return '<div class="barra"><div style="width:' + Math.max(0, Math.min(100, Number(b.pct) || 0)) + '%"></div></div>';
+                case 'dos': return '<div class="dos">' + lista(b.cajas || [], x => '<div class="caja' + (x.ok ? ' ok' : '') + '"><small>' + escHtml(x.small || '') + '</small><b>' + escHtml(x.b || '') + '</b><span>' + escHtml(x.span || '') + '</span></div>') + '</div>';
+                case 'vs': return '<div class="vs"><div class="n mal"><span>' + escHtml(b.a.lbl) + '</span><b>' + escHtml(b.a.val) + '</b></div><div class="fl">→</div><div class="n bien"><span>' + escHtml(b.b.lbl) + '</span><b>' + escHtml(b.b.val) + '</b></div></div>';
+                case 'pasos': return '<div class="pasos2">' + lista(b.items || [], (x, i) => '<div><i>' + (i + 1) + '</i><span>' + _cwMd(x) + '</span></div>') + '</div>';
+                case 'opc': return '<div class="opc">' + lista(b.items || [], x => '<div>' + _cwMd(x) + '</div>') + '</div>';
+                default: return '';
+            }
+        };
+        const bloques = o.bloques || (o.lineas || []).map(x => ({ t: 'lead', txt: x }));
+        root.innerHTML = '<style>' + css + '</style><div id="c" role="alert"><div class="franja ' + escHtml(tipo) + '"><span class="ic">' + escHtml(ic) + '</span><b>' + escHtml(ti) + '</b></div><div class="cuerpo">' + bloques.map(bloque).join('') + '<div id="bs"></div></div></div>';
+        (o.botones || []).forEach(bt => {
+            const cont = root.getElementById('bs');
+            if (bt.esp) { const s = document.createElement('span'); s.className = 'esp'; cont.appendChild(s); return; }
+            const b = document.createElement('button'); b.type = 'button'; b.textContent = bt.txt; b.className = bt.cls || (bt.sec ? 'sec' : 'pri');
+            b.addEventListener('click', () => { _cwCartelQuitar(); listo(bt.k); }); cont.appendChild(b);
+        });
         document.documentElement.appendChild(host);
-    } catch (e) { listo((o.botones && o.botones[0] && o.botones[0].k) || ''); }
+    } catch (e) { listo((o.botones && o.botones.find(b => b.k) && o.botones.find(b => b.k).k) || ''); }
 });
 // ── [v17.5] CARTEL DE ENVÍO A LA COLA (rediseño): evento, cifras, horario y, si hace falta, un AVISO cuando el cierre parece DIARIO (varios días con un mismo horario) y el Período está en «Continuo».
 const _cwMesCorto = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -13387,13 +13429,13 @@ const _cwPartirDeLaLista = async () => {
 };
 // el formulario ya está abierto y la ciudad quedó en otra comuna: aviso grande; si se pulsa «Cancelar creación» se cierra solo y se pide ir a la comuna correcta
 const _cwComunaIncorrecta = async (c, actual) => {
-    await _cwCartelElegir({ titulo: '⚠ EVENTO EN LA COMUNA INCORRECTA', lineas: ['Se está creando en «' + (actual || 'otra comuna') + '» y debe ser «' + c.comuna + '».'], botones: [{ k: 'cancelar', txt: 'Cancelar creación' }] });
+    await _cwCartelElegir({ tipo: 'error', icono: '⚠', titulo: 'Comuna incorrecta', bloques: [{ t: 'vs', a: { lbl: 'Se está creando en', val: actual || 'otra comuna' }, b: { lbl: 'Debe ser', val: c.comuna } }], botones: [{ k: 'cancelar', txt: 'Cancelar creación', cls: 'pri' }] });
     _cwEstado('Cancelando la creación del evento…', '#1565c0');
     const ok = await _cwCancelarFormulario();
     if (ok && _cwPendAntes != null) { const resto = await _cwDeshacerHasta(_cwPendAntes); _cwReg('deshacer: cambios pendientes ' + resto + ' (antes de abrir el formulario había ' + _cwPendAntes + ')'); }
     else if (ok) _cwReg('deshacer: no se pudo leer cuántos cambios había antes: no se deshace nada');
     _cwEstado(ok ? 'Creación cancelada. Ve a la comuna de ' + c.comuna + ' y vuelve a pulsar «➕ Crear evento».' : 'No pude cerrar el formulario: pulsa «Cancelar» abajo y «Quitar» en la ventana de Waze.', '#e65100');
-    await _cwCartelElegir({ titulo: ok ? 'Creación cancelada' : '⚠ Cierra el formulario a mano', lineas: ok ? ['Ve a la comuna de «' + c.comuna + '» en el mapa y vuelve a pulsar «Crear evento».'] : ['Pulsa «Cancelar» al final del formulario y «Quitar» en la ventana de Waze.', 'Después ve a la comuna de «' + c.comuna + '» y vuelve a pulsar «Crear evento».'], botones: [{ k: 'ok', txt: 'Aceptar' }] });
+    await _cwCartelElegir(ok ? { tipo: 'info', icono: '✔', titulo: 'Creación cancelada', bloques: [{ t: 'pasos', items: ['Ve a la comuna de **' + c.comuna + '** en el mapa', 'Pulsa «Crear evento» otra vez'] }], botones: [{ k: 'ok', txt: 'Aceptar', cls: 'pri' }] } : { tipo: 'aviso', icono: '⚠', titulo: 'Cierra el formulario a mano', bloques: [{ t: 'pasos', items: ['«Cancelar» al final del formulario', '«Quitar» en la ventana de Waze', 'Ve a **' + c.comuna + '** y pulsa «Crear evento» otra vez'] }], botones: [{ k: 'ok', txt: 'Aceptar', cls: 'pri' }] });
 };
 // Todo lo que se hace al pulsar «➕ Crear evento», ANTES de abrir el formulario. Devuelve 'seguir' o 'no' (no crear). Si algo falla, 'seguir'.
 // ─── [v16.9] ALEJAR EL MAPA PARA ENCONTRAR EL EVENTO Y «YA LO BORRÉ» ───────────────────────────────────────────────────
@@ -13450,8 +13492,8 @@ const _cwYaLoBorre = async (c, previo) => {
         let aun = null;
         if (id) { try { const lista = (await sdk.DataModel.MajorTrafficEvents.getAll()) || []; aun = lista.find(m => String(m.id) === id) || null; } catch (e) { aun = null; } }
         const k = await _cwCartelElegir(aun
-            ? { titulo: '⚠ WAZE TODAVÍA LO MUESTRA', lineas: ['El evento ' + _cwIdCorto(id) + ' sigue apareciendo en la lista de Waze.', 'Si no lo borraste, no sigas: crearías un duplicado.'], botones: [{ k: 'si', txt: 'Sí, lo borré igual' }, { k: 'no', txt: 'Volver', sec: true }] }
-            : { titulo: '¿YA LO BORRASTE?', lineas: ['La extensión olvidará el evento' + (id ? ' ' + _cwIdCorto(id) : '') + ' y avisará a la web que ya no existe.', 'Quedará anotado en el historial del cierre y podrás crear uno nuevo.'], botones: [{ k: 'si', txt: 'Sí, ya lo borré' }, { k: 'no', txt: 'Volver', sec: true }] });
+            ? { tipo: 'error', icono: '⚠', titulo: 'Ese evento sigue en Waze', bloques: [{ t: 'lead', txt: 'El evento **' + _cwIdCorto(id) + '** aún aparece en la lista de Waze. Si no lo borraste, no sigas: **crearías un duplicado**.' }], botones: [{ k: 'no', txt: 'Volver', cls: 'pri' }, { esp: true }, { k: 'si', txt: 'Sí, lo borré igual', cls: 'peligro' }] }
+            : { tipo: 'aviso', icono: '❓', titulo: '¿Ya lo borraste?', bloques: [{ t: 'lead', txt: 'La extensión olvidará el evento' + (id ? ' **' + _cwIdCorto(id) + '**' : '') + ' y avisará a la web que ya no existe.' }, { t: 'nota', txt: 'Quedará anotado en el historial del cierre y podrás crear uno nuevo.' }], botones: [{ k: 'no', txt: 'Volver', cls: 'sec' }, { esp: true }, { k: 'si', txt: 'Sí, ya lo borré', cls: 'pri' }] });
         if (k !== 'si') return false;
         _cwReg('el analista indicó que borró el evento ' + (id || '(sin id)') + ': se olvida y se avisa a la web');
         await _cwOlvidarCreado(c, id);
@@ -13536,14 +13578,13 @@ const _cwAntesDeCrear = async c => {
             return 'no';
         }
         if (previo || enl) {
-            const lineas = [];
-            if (enl) lineas.push('La web tiene este cierre enlazado a un evento ' + (enl.listo ? 'ENVIADO' : 'SIN ENVIAR') + ' (' + _cwIdCorto(enl.id) + ')' + (previo ? ' que creaste hace ' + _cwHaceTxt(previo.ts) : '') + ' y no aparece en tu lista.');
-            else lineas.push('Lo creaste hace ' + _cwHaceTxt(previo.ts) + (previo.id ? ' (' + _cwIdCorto(previo.id) + ')' : '') + ' y no aparece en tu lista.');
-            lineas.push('Puede que lo hayas borrado, o que el filtro del panel Eventos o la zona del mapa lo oculten.');
-            if (enl && enl.listo) lineas.push('Como ya estaba enviado, la web NO cambiará el enlace al evento nuevo: el administrador lo revisará.');
-            else if (enl) lineas.push('Si creas otro, el cierre pasará al evento nuevo; el anterior, si sigue en Waze, habrá que borrarlo.');
-            else lineas.push('Crear otro puede dejar un evento duplicado en Waze.');
-            const k = await _cwCartelElegir({ titulo: 'YA CREASTE UN EVENTO PARA ESTE CIERRE', lineas, botones: [{ k: 'no', txt: 'No crear otro', sec: true }, { k: 'borre', txt: 'Ya lo borré, crear uno nuevo' }, { k: 'otro', txt: 'Crear otro de todos modos', sec: true }] });
+            const idc = enl ? _cwIdCorto(enl.id) : (previo && previo.id ? _cwIdCorto(previo.id) : '');
+            const blq = [{ t: 'lead', txt: 'Evento' + (idc ? ' **' + idc + '**' : '') + (enl ? ' (' + (enl.listo ? 'enviado' : 'sin enviar') + ')' : '') + (previo && previo.ts ? ', creado hace ' + _cwHaceTxt(previo.ts) : '') + ', **no aparece en tu lista**.' },
+                { t: 'opc', items: ['**¿Lo borraste?** → «Ya lo borré, crear uno nuevo»', '**¿Solo no se ve?** → revisa el filtro del panel Eventos y la zona del mapa'] }];
+            if (enl && enl.listo) blq.push({ t: 'nota', txt: 'Como ya estaba enviado, la web NO cambiará el enlace al evento nuevo: el administrador lo revisará.' });
+            else if (enl) blq.push({ t: 'nota', txt: 'Si creas otro, el cierre pasará al evento nuevo; el anterior, si sigue en Waze, habrá que borrarlo.' });
+            else blq.push({ t: 'nota', txt: 'Crear otro puede dejar un evento duplicado en Waze.' });
+            const k = await _cwCartelElegir({ tipo: 'aviso', icono: '⚠', titulo: 'Este cierre ya tiene un evento', bloques: blq, botones: [{ k: 'no', txt: 'No crear otro', cls: 'pri' }, { k: 'borre', txt: 'Ya lo borré, crear uno nuevo', cls: 'sec' }, { esp: true }, { k: 'otro', txt: 'Crear otro igual', cls: 'peligro' }] });
             if (k === 'borre') {
                 if (await _cwYaLoBorre(c, { id: idEsp })) return 'seguir';
                 _cwReg('el analista no confirmó que lo borró: no se crea otro'); _cwEstado('No se creó otro evento. Si lo borraste, pulsa «Ya lo borré»; si no, revisa el filtro del panel Eventos y la zona del mapa.', '#e65100'); _cwBotonModo('enlazar'); _cwBorradoMostrar(c, { id: idEsp, ts: previo ? previo.ts : Date.now() }); return 'no';
@@ -20735,11 +20776,18 @@ const connectOverlay=ov=>{
         { const rep=_colaRepetidos(validIds,rc.list);
           if(rep.n){
               const todas=rep.n>=validIds.length, casi=rep.n>=validIds.length*0.9;
-              const lineas=[todas ? 'Los '+rep.n+' segmentos de tu selección ya están en la cola.' : rep.n+' de los '+validIds.length+' segmentos de tu selección ya están en la cola.'];
-              rep.entradas.slice(0,3).forEach(x=>lineas.push('• '+String(x.e.label||'Entrada').slice(0,70)+' · '+x.k+' segmento(s)'+(x.e.detail?' · '+String(x.e.detail).slice(0,70):'')));
-              if(rep.entradas.length>3) lineas.push('… y '+(rep.entradas.length-3)+' entrada(s) más');
-              lineas.push('Si las agregas de nuevo, la misma calle quedará dos veces en la cola con horarios que se cruzan.');
-              const k=await _cwCartelElegir({ titulo: casi ? '⚠ Estas calles ya están en la cola' : '⚠ Parte de estas calles ya está en la cola', lineas, botones:[{k:'no',txt:'No agregar',sec:true},{k:'si',txt:'Agregar igual'}] });
+              // [v20.3] cada entrada como una línea ordenada: V1 · horario · N seg (sin los textos internos de la entrada)
+              const _hDia=['dom','lun','mar','mié','jue','vie','sáb'], _p2=n=>String(n).padStart(2,'0');
+              const _fDM=d=>{ const x=new Date(d); return isNaN(x)?'':x.getDate()+'-'+_cwMesCorto[x.getMonth()]; };
+              const _fHM=d=>{ const x=new Date(d); return isNaN(x)?'':_p2(x.getHours())+':'+_p2(x.getMinutes()); };
+              const _hTxt=cl=>{ try{ if(!Array.isArray(cl)||!cl.length) return ''; const a=new Date(cl[0].start), b=new Date(cl[cl.length-1].end); if(isNaN(a)||isNaN(b)) return ''; if(cl.length>1) return cl.length+' cierres · '+_fDM(a)+' → '+_fDM(b); return _hDia[a.getDay()]+' '+_fDM(a)+' '+_fHM(a)+' → '+(_fDM(a)===_fDM(b)?'':_fDM(b)+' ')+_fHM(b); }catch(e){ return ''; } };
+              const _limpia=x=>String(x||'Entrada').replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF\uFE0F]/gu,'').replace(/^\s*V\d+\s*·\s*/,'').replace(/\s+/g,' ').trim().slice(0,60);
+              const igual=rep.entradas.every(x=>{ const a=x.e.closures, b=rc.list; try{ return Array.isArray(a)&&a.length===b.length&&a.every((c,i)=>+new Date(c.start)===+new Date(b[i].start)&&+new Date(c.end)===+new Date(b[i].end)); }catch(e){ return false; } });
+              const items=rep.entradas.slice(0,3).map(x=>({ tag:String(x.e.planVent||''), txt:_hTxt(x.e.closures)||_limpia(x.e.label), em:x.k+' seg' }));
+              if(rep.entradas.length>3) items.push({ tag:'', txt:'… y '+(rep.entradas.length-3)+' entrada(s) más', em:'' });
+              const k=await _cwCartelElegir({ tipo:'naranja', icono:'⚠', titulo: casi ? 'Estas calles ya están en la cola' : 'Parte de estas calles ya está en la cola',
+                  bloques:[{ t:'lead', txt:(todas ? '**'+rep.n+' segmentos** de tu selección ya están en la cola' : '**'+rep.n+' de los '+validIds.length+' segmentos** de tu selección ya están en la cola')+(igual ? ' **con el mismo horario**:' : ' **con un horario que se cruza**:') }, { t:'chips', items }, { t:'nota', txt:'Si las agregas otra vez, la misma calle quedará dos veces en la cola con ese horario.' }],
+                  botones:[{k:'no',txt:'No agregar',cls:'pri'},{k:'si',txt:'Agregar igual',cls:'sec'}] });
               if(k!=='si'){ showToast('No se agregó: esas calles ya estaban en la cola',3500,'#f57c00'); return; }
           } }
         // ─── Entrée ZONE (polygone) ───
@@ -23162,15 +23210,14 @@ const _planPlay = async vid => {
             _planPlayFallos = rev.filter(r => r.estado !== 'ok').map(r => ({ tid: r.t.id, motivo: r.motivo, estado: r.estado, sug: r.sug, campos: r.campos, por: r.por }));
             _planPlayMsg = ''; _planPlayInfo = null; _planRedibujar();
             const nos = rev.filter(r => r.estado !== 'ok');
-            const lineas = [oks.length ? 'Se pueden tomar ' + oks.length + ' de ' + todos.length + ' tramos.' : 'No se puede tomar ningún tramo solo.'];
-            // el cartel es corto: los tramos que no se toman van AGRUPADOS por motivo, solo con su número; el detalle de cada uno queda en el plan
-            const grupo = (f, txt) => { const n = nos.filter(f).map(r => _planNum(r.t)); if (n.length) lineas.push(txt + ': ' + n.join(', ')); };
-            grupo(r => r.estado === 'manual', '✋ A mano («Partida», «Meta» o distancias)');
-            grupo(r => r.estado === 'cubierto', '✔ Quedan como listos (son el mismo tramo, al revés)');
-            grupo(r => r.estado === 'no' && /^falta confirmar/.test(r.motivo), '⚠ Falta confirmar el horario asumido');
-            grupo(r => r.estado === 'no' && !/^falta confirmar/.test(r.motivo), '✖ No se ubicaron');
-            if (nos.length) lineas.push('El motivo de cada uno queda en el plan.');
-            const k = await _cwCartelElegir({ titulo: '▶ Revisión del plan', lineas, botones: oks.length ? [{ k: 'no', txt: 'Cancelar', sec: true }, { k: 'si', txt: 'Seguir' }] : [{ k: 'no', txt: 'Entendido' }] });
+            // [v20.3] los tramos que no se toman van AGRUPADOS por motivo, solo con su número; el detalle de cada uno queda en el plan
+            const nCub = nos.filter(r => r.estado === 'cubierto').map(r => _planNum(r.t)), nMan = nos.filter(r => r.estado === 'manual').map(r => _planNum(r.t));
+            const nConf = nos.filter(r => r.estado === 'no' && /^falta confirmar/.test(r.motivo)).map(r => _planNum(r.t)), nNo = nos.filter(r => r.estado === 'no' && !/^falta confirmar/.test(r.motivo)).map(r => _planNum(r.t));
+            const lis = a => (a.length === 1 ? 'tramo ' : 'tramos ') + (a.length > 2 ? a.slice(0, -1).join(', ') + ' y ' + a[a.length - 1] : a.join(' y '));
+            const est = []; if (nCub.length) est.push({ c: 'ok', txt: '✔ cubierto: ' + lis(nCub) }); if (nMan.length) est.push({ c: 'am', txt: '✋ a mano: ' + lis(nMan) }); if (nConf.length) est.push({ c: 'am', txt: '⚠ sin confirmar: ' + lis(nConf) }); if (nNo.length) est.push({ c: 'rj', txt: '✖ sin ubicar: ' + lis(nNo) });
+            const blq = [{ t: 'barra', pct: Math.round(100 * oks.length / Math.max(1, todos.length)) }, { t: 'lead', txt: oks.length ? '**' + oks.length + ' de ' + todos.length + '** tramos se toman solos' : '**Ningún tramo** se puede tomar solo' }];
+            if (est.length) { blq.push({ t: 'estados', items: est }); blq.push({ t: 'nota', txt: 'El motivo de cada uno queda en el plan.' }); }
+            const k = await _cwCartelElegir({ tipo: 'info', icono: '▶', titulo: 'Revisión del plan', bloques: blq, botones: oks.length ? [{ k: 'no', txt: 'Cancelar', cls: 'sec' }, { esp: true }, { k: 'si', txt: 'Seguir', cls: 'pri' }] : [{ k: 'no', txt: 'Entendido', cls: 'pri' }] });
             if (k !== 'si') cancelado = true;
             else { if (!_plan.cubre) _plan.cubre = {}; rev.filter(r => r.estado === 'cubierto' && r.por != null).forEach(r => { _plan.cubre[r.t.id] = r.por; }); _planGuardar(); }   // [v17.5] quedan como listos (valen mientras el tramo que los cubre siga tomado)
         }
@@ -23402,10 +23449,10 @@ const _planAntesDeAplicar = async () => {
         const faltan = _plan.p.ventanas.filter(v => !_planEnCola(v.id));
         if (!faltan.length) return true;
         const general = faltan.length === 1 && faltan[0].general;
-        const k = await _cwCartelElegir({ titulo: general ? '⚠ Los tramos no se han enviado a la cola' : '⚠ Falta enviar a la cola: ' + faltan.map(v => v.id).join(', '),
-            lineas: general ? ['Con el Método 2 hay que pulsar «📥 Enviar todo a la cola» en el plan antes de Aplicar.', 'Si aplicas ahora, no se cargará nada de este plan.']
-                            : [...faltan.map(v => `${v.id}: ${_planVentTxt(v)} (${_plan.p.tramos.filter(t => t.ventana === v.id).length} tramo/s)`), 'Si aplicas ahora, el cierre quedará incompleto en Waze y la web lo verá como «Parcial».'],
-            botones: [{ k: 'volver', txt: 'Volver' }, { k: 'igual', txt: 'Aplicar igual', sec: true }] });
+        const k = await _cwCartelElegir({ tipo: 'error', icono: '⚠', titulo: general ? 'Aún no enviaste los tramos a la cola' : 'Aún no enviaste ' + faltan.map(v => v.id).join(' ni ') + ' a la cola',
+            bloques: general ? [{ t: 'lead', txt: 'Con el Método 2 hay que pulsar «📥 Enviar todo a la cola» en el plan antes de Aplicar.' }, { t: 'roja', txt: 'Si aplicas ahora, **no se cargará nada** de este plan.' }]
+                : [{ t: 'chips', items: faltan.map(v => { const n = _plan.p.tramos.filter(t => t.ventana === v.id).length; return { tag: v.id, txt: _planVentTxt(v), em: n + (n === 1 ? ' tramo' : ' tramos') }; }) }, { t: 'roja', txt: 'Aplicar ahora deja el cierre **incompleto** en Waze («Parcial» en la web).' }],
+            botones: [{ k: 'volver', txt: 'Volver y enviarlas', cls: 'pri' }, { esp: true }, { k: 'igual', txt: 'Aplicar igual', cls: 'peligro' }] });
         return k === 'igual';
     } catch (e) { return true; }
 };
@@ -23414,11 +23461,9 @@ const _planAntesDeValidar = async () => {
     try {
         if (!_plan || !_planMetodo || _planOcupado) return true;
         const todoEnCola = _plan.p.ventanas.every(v => _planEnCola(v.id));
-        const k = await _cwCartelElegir({ titulo: '🧩 Estás usando el Método 2 (por tramos)',
-            lineas: [todoEnCola ? 'Tus tramos ya están en la cola: no hace falta volver a validar.' : 'Con el Método 2 los tramos se envían a la cola desde el plan, con el botón «📥 Enviar … a la cola».',
-                     'Este botón verde es del Método 1: cargaría otra vez todo lo que tengas seleccionado y repetiría lo que ya enviaste.',
-                     'Si quieres trabajar con el Método 1, apaga el interruptor «Método 2 · por tramos» (en el Paso 2).'],
-            botones: [{ k: 'ok', txt: 'Entendido' }, { k: 'm1', txt: 'Cambiar al Método 1', sec: true }] });
+        const k = await _cwCartelElegir({ tipo: 'info', icono: '🧩', titulo: 'Estás en el Método 2 (por tramos)',
+            bloques: [{ t: 'dos', cajas: [{ ok: true, small: 'Método 2 · estás aquí', b: todoEnCola ? 'Tus tramos ya están en la cola' : 'Envía desde el plan', span: todoEnCola ? 'No hace falta volver a validar' : 'Botón «📥 Enviar … a la cola»' }, { small: 'Método 1 · este botón verde', b: 'Carga lo seleccionado', span: 'Repetiría lo que ya enviaste' }] }, { t: 'nota', txt: 'Para usar el Método 1, apaga el interruptor «Método 2 · por tramos» (Paso 2).' }],
+            botones: [{ k: 'm1', txt: 'Cambiar al Método 1', cls: 'sec' }, { esp: true }, { k: 'ok', txt: 'Entendido', cls: 'pri' }] });
         if (k === 'm1') _planMetodoAlternar();   // apaga el Método 2; no valida solo: el analista vuelve a pulsar Validar si quiere
         return false;
     } catch (e) { return false; }   // ante la duda NO se valida: es mejor un clic de más que una entrada repetida
