@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.0
+// @version      20.1
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.1: UN MISMO TRAMO EN VARIAS VENTANAS. La web repite el tramo físico en cada horario (V1, V3…): ahora puede tomar los mismos segmentos en cada ventana (solo se evitan duplicados DENTRO de una ventana). 📍 Ubicar, el Play y «Tomar selección» ya no los bloquean; el amarillo, cuando no hay nada libre, marca solo la calzada pedida.
 // v20.0: AL ENVIAR UNA VENTANA A LA COLA el mapa vuelve a la vista en que estaba el analista (antes se quedaba donde terminaba el último paso, p. ej. alejado hacia la comuna).
 // v17.5: AL TERMINAR EL PLAY el mapa encuadra todo lo tomado en la ventana (antes volvía a la comuna y el dibujo quedaba fuera de vista). El dibujo usa la geometría del escaneo si Waze ya descargó el segmento.
 // v17.5: CALLES LATERALES. Al armar un tramo se descartan los segmentos que van perpendiculares a él (p. ej. «Pasaje Huérfanos» saliendo de «Huérfanos»), salvo curvas reales de la calle.
@@ -22793,12 +22794,14 @@ const _planUbicar = async tid => {
     _planActivoId = tid; _planWarn = null; _planScroll = true;
     const loc = _planLocalizar(t);
     // candidatos: los segmentos de esa calle entre «desde» y «hasta» que todavía no son de otro tramo
-    const tomados = new Set(Object.keys(_plan.hechos).flatMap(k => _plan.hechos[k].ids));
+    const tomados = new Set(Object.keys(_plan.hechos).filter(k => { const o = _plan.p.tramos.find(x => String(x.id) === k); return !!o && o.ventana === t.ventana; }).flatMap(k => _plan.hechos[k].ids));   // [v20.1] solo los de esta ventana
     let ids = loc.segIds.filter(id => getSegById(id) && !tomados.has(Number(id)));
     let deOtraCalzada = 0;
     if (_planUnSentido(t)) { const r = _planRumboCalzada(t.calzada); if (r) { const antes = ids.length; ids = ids.filter(id => _planCalzadaDe(id, r.rumbo) !== 'contraria'); deOtraCalzada = antes - ids.length; } }
     if (loc.centro) { try { _centrerSurZoneVisibleOL(loc.centro[0], loc.centro[1], 17); } catch (e) { /* nada */ } }
-    _planFlash = ids.length ? ids : loc.segIds;   // el amarillo se queda hasta que el tramo se toma
+    let marca = loc.segIds;   // [v20.1] si no queda nada libre, el amarillo muestra los del tramo SOLO de la calzada pedida (antes pintaba también la contraria)
+    if (_planUnSentido(t)) { const r2 = _planRumboCalzada(t.calzada); if (r2) marca = loc.segIds.filter(id => _planCalzadaDe(id, r2.rumbo) !== 'contraria'); }
+    _planFlash = ids.length ? ids : marca;   // el amarillo se queda hasta que el tramo se toma
     if (ids.length) {
         try { await sdk.Editing.setSelection({ selection: { ids, objectType: 'segment' } }); await _wmeSelection(); }
         catch (e) { log('plan ubicar, selección: ' + e.message); }
@@ -22966,7 +22969,7 @@ const _planSugerir = (texto, calles) => {
 // Revisa los tramos contra el escaneo SIN tocar el mapa. Cada resultado: { t, estado: 'ok'|'no'|'manual'|'cubierto', motivo, ids, bbox, sug }
 const _planRevisar = (ts, esc) => {
     const res = [], reservados = new Map(), zona = esc.areaTxt ? ' (' + esc.areaTxt + ')' : '';
-    Object.keys(_plan.hechos).forEach(k => { const tt = _plan.p.tramos.find(x => String(x.id) === k); _plan.hechos[k].ids.forEach(id => reservados.set(Number(id), tt || null)); });
+    Object.keys(_plan.hechos).forEach(k => { const tt = _plan.p.tramos.find(x => String(x.id) === k); _plan.hechos[k].ids.forEach(id => { const n = Number(id); if (!reservados.has(n)) reservados.set(n, []); reservados.get(n).push(tt || null); }); });   // [v20.1] id → tramos que ya lo tienen
     const prev = _planFuente; _planFuente = esc.fuente;
     try {
         ts.forEach(t => {
@@ -23000,15 +23003,17 @@ const _planRevisar = (ts, esc) => {
             let ids = loc.segIds.slice();
             if (_planUnSentido(t)) { const q = _planRumboCalzada(t.calzada); if (q) ids = ids.filter(id => _planCalzadaDe(id, q.rumbo) !== 'contraria'); }
             if (!ids.length) { r.motivo = 'no hay segmentos de «' + t.calle + '» entre «' + t.desde + '» y «' + t.hasta + '»' + (_planUnSentido(t) ? ' en la calzada pedida' : ''); return; }
-            const libres = ids.filter(id => !reservados.has(id));
+            // [v20.1] solo cuentan los tramos de la MISMA ventana: la web repite un mismo tramo físico en cada horario (V1, V3…) y cada ventana se envía aparte a la cola
+            const mios = id => (reservados.get(id) || []).filter(d => d && d.ventana === t.ventana);
+            const libres = ids.filter(id => !mios(id).length);
             if (!libres.length) {
-                const duenios = [...new Set(ids.map(id => reservados.get(id)).filter(Boolean))];
+                const duenios = [...new Set(ids.flatMap(id => mios(id)))];
                 if (duenios.length && duenios.every(d => d.ventana === t.ventana)) { r.estado = 'cubierto'; r.por = duenios[0].id; r.motivo = 'ya está en el tramo ' + _planNum(duenios[0]) + (duenios.length > 1 ? ' y otros' : '') + ' (es el mismo tramo, al revés)'; }
                 else if (duenios.length) r.motivo = 'sus segmentos ya son del tramo ' + _planNum(duenios[0]) + ', que tiene otro horario (' + duenios[0].ventana + '): no se puede dar por cubierto';
                 else r.motivo = 'no encontré segmentos libres entre «' + t.desde + '» y «' + t.hasta + '»';
                 return;
             }
-            libres.forEach(id => reservados.set(id, t));
+            libres.forEach(id => { if (!reservados.has(id)) reservados.set(id, []); reservados.get(id).push(t); });
             r.estado = 'ok'; r.ids = libres; r.bbox = loc.bbox;
         });
     } finally { _planFuente = prev; }
@@ -23197,7 +23202,7 @@ const _planTomar = async (tid, forzar, quitar) => {
     if (t.asumido && !_plan.confirm[t.id]) return aviso(['Confirma primero el horario asumido de este tramo.'], true);
     let ids = s.ids.map(Number);
     // Las calles se cruzan: un segmento puede haber quedado ya en otro tramo. No es un error: se omite y se sigue con el resto.
-    const dueño = id => { const k = Object.keys(_plan.hechos).find(k => Number(k) !== t.id && _plan.hechos[k].ids.includes(id)); return k ? _plan.p.tramos.find(x => String(x.id) === k) : null; };
+    const dueño = id => { const k = Object.keys(_plan.hechos).find(k => { if (Number(k) === t.id || !_plan.hechos[k].ids.includes(id)) return false; const o = _plan.p.tramos.find(x => String(x.id) === k); return !!o && o.ventana === t.ventana; }); return k ? _plan.p.tramos.find(x => String(x.id) === k) : null; };   // [v20.1] solo cuenta la misma ventana
     const ya = ids.filter(id => dueño(id));
     let omitidos = '';
     if (ya.length) {
