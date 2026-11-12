@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.3
+// @version      20.4
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.4: «IR A LA COMUNA» deja el mapa EXACTAMENTE en las coordenadas de la comuna (antes lo desplazaba para esquivar el panel y, según dónde estuviera el panel, terminaba en otra comuna: Independencia → Providencia).
 // v20.3: MENSAJES REDISEÑADOS (8 cartelitos): franja de color arriba (naranja reforzado en «Estas calles ya están en la cola») y cuerpo ordenado — chips, cajas, pasos —, texto a la izquierda, botón principal destacado y el peligroso aparte en rojo. Los avisos flotantes y las ventanas nativas no cambian.
 // v20.2: EL AVISO «ESTAS CALLES YA ESTÁN EN LA COLA» solo sale si el horario de lo que ya está en la cola SE CRUZA con el nuevo (antes avisaba por cualquier entrada con los mismos segmentos, aunque fuera otro día u hora: V1, V3…).
 // v20.1: UN MISMO TRAMO EN VARIAS VENTANAS. La web repite el tramo físico en cada horario (V1, V3…): ahora puede tomar los mismos segmentos en cada ventana (solo se evitan duplicados DENTRO de una ventana). 📍 Ubicar, el Play y «Tomar selección» ya no los bloquean; el amarillo, cuando no hay nada libre, marca solo la calzada pedida.
@@ -12751,14 +12752,13 @@ const _comunaCentro = txt => {
     return null;
 };
 var _cwSinComuna = false;   // true mientras se recupera el cierre tras recargar la página: ahí no se mueve el mapa
-// Lleva el mapa al centro de la comuna (zoom 14: se ve la comuna sin cargar de más). exacto=true: sin desplazar por el panel (para que Waze tome la comuna correcta al crear el evento).
+// Lleva el mapa al centro de la comuna (zoom 14: se ve la comuna sin cargar de más). [v20.4] SIEMPRE exacto: el mapa queda EN las coordenadas de la comuna, sin desplazarlo para esquivar el panel (el desplazamiento mandaba el mapa a otra comuna según dónde estuviera el panel); el analista lo mueve después. El parámetro `exacto` se conserva por compatibilidad.
 // Devuelve true si movió el mapa; si la comuna no está en la tabla, no hace nada.
 const _irAComuna = async (txt, exacto) => {
     const c = _comunaCentro(txt);
     if (!c) { log('ir a la comuna: «' + txt + '» no está en la tabla'); return false; }
     try {
-        if (exacto) await sdk.Map.setMapCenter({ lonLat: { lon: c.lon, lat: c.lat }, zoomLevel: 14 });
-        else await _centrerSurZoneVisibleOL(c.lon, c.lat, 14);
+        await sdk.Map.setMapCenter({ lonLat: { lon: c.lon, lat: c.lat }, zoomLevel: 14 });
         return true;
     } catch (e) { log('ir a la comuna: ' + e.message); return false; }
 };
