@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.4
+// @version      20.5
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.5: VERIFICAR Y COMPLETAR EL TRAMO. Cada tarjeta dice «✔ llega a Guanaco y a Independencia» o «⚠ no llega hasta Puente» (comprueba por nodo que los extremos toquen la calle «desde»/«hasta»). 📍 Ubicar y el ▶ Play completan solos un tramo que quedó corto (misma calle, un solo camino, ≤ 80 m, sin ir contra la calzada); nunca quitan segmentos.
 // v20.4: «IR A LA COMUNA» deja el mapa EXACTAMENTE en las coordenadas de la comuna (antes lo desplazaba para esquivar el panel y, según dónde estuviera el panel, terminaba en otra comuna: Independencia → Providencia).
 // v20.3: MENSAJES REDISEÑADOS (8 cartelitos): franja de color arriba (naranja reforzado en «Estas calles ya están en la cola») y cuerpo ordenado — chips, cajas, pasos —, texto a la izquierda, botón principal destacado y el peligroso aparte en rojo. Los avisos flotantes y las ventanas nativas no cambian.
 // v20.2: EL AVISO «ESTAS CALLES YA ESTÁN EN LA COLA» solo sale si el horario de lo que ya está en la cola SE CRUZA con el nuevo (antes avisaba por cualquier entrada con los mismos segmentos, aunque fuera otro día u hora: V1, V3…).
@@ -22612,6 +22613,72 @@ const _planNodos = () => {
     if (_planFuente) _planNodosCache = { f: _planFuente, n: _planFuente.segs.size, v: res };
     return res;
 };
+// [v20.5] VERIFICAR Y COMPLETAR EL TRAMO. El tramo se arma con un rectángulo entre dos puntos calculados («desde» y «hasta»): en cruces grandes (calzadas dobles, plazoletas) el punto del cruce cae ANTES del contacto real y los últimos
+// segmentos quedaban fuera SIN AVISAR (Santa Laura → Independencia se quedaba 61 m corta). Aquí se comprueba que los EXTREMOS de la selección TOQUEN (por nodo) un segmento de la calle «desde» y de la calle «hasta».
+// Si un extremo no toca ninguna, se sigue por la MISMA calle (un solo camino, ≤ 80 m, sin ir contra la calzada pedida) hasta que toque. Solo AGREGA segmentos; si no puede, NO cambia nada y lo dice.
+// Devuelve { ids, extra:[ids agregados], metros, desde: true|false|null, hasta: true|false|null, falla, aplica }  (null = no se puede verificar: «Partida», distancias, anillos).
+const _PLAN_EXTENSION_M = 80;
+var _planIdxC = null;
+const _planIdxNodos = () => {
+    const S = _pfSegs();
+    if (_planIdxC && _planIdxC.S === S && _planIdxC.n === S.size && Date.now() - _planIdxC.t < 2500) return _planIdxC.m;
+    const m = new Map();
+    S.forEach((s, id) => { [s.fromNodeId, s.toNodeId].forEach(nd => { if (!nd) return; if (!m.has(nd)) m.set(nd, []); m.get(nd).push(Number(id)); }); });
+    _planIdxC = { S, n: S.size, t: Date.now(), m };
+    return m;
+};
+const _planVerificar = (t, ids, extender) => {
+    const r = { ids: (ids || []).slice(), extra: [], metros: 0, desde: null, hasta: null, falla: false, aplica: false };
+    try {
+        if (!r.ids.length) return r;
+        const dN = _planNorm(t.desde), hN = _planNorm(t.hasta);
+        if (!dN || !hN || dN === hN) return r;   // anillo o sin nombres: no se verifica
+        const okD = !_planEsAbierto(t.desde) && !_planEsDistancia(t.desde), okH = !_planEsAbierto(t.hasta) && !_planEsDistancia(t.hasta);
+        if (!okD && !okH) return r;
+        const idx = _planIdxNodos();
+        const esCalle = id => _pfNombres(id).some(n => _planMisma(n, t.calle));
+        const toca = (nd, nN) => !!nN && (idx.get(nd) || []).some(id => !esCalle(id) && _pfNombres(id).some(n => _planCoincide(_planNorm(n), nN)));
+        const rq = _planUnSentido(t) ? _planRumboCalzada(t.calzada) : null;
+        const contraria = id => !!rq && _planCalzadaDe(id, rq.rumbo) === 'contraria';
+        const largo = id => { const co = _getSegCoords(_pfSeg(id)); return co ? co.slice(1).reduce((q, p, i) => q + _cMetros(co[i], p), 0) : 0; };
+        const extremos = sel => { const c = new Map(); sel.forEach(id => { const s = _pfSeg(id); if (!s) return; [s.fromNodeId, s.toNodeId].forEach(n => { if (n) c.set(n, (c.get(n) || 0) + 1); }); }); return [...c].filter(([, k]) => k === 1).map(([n]) => n); };
+        const toqueDe = n => (okD && toca(n, dN)) || (okH && toca(n, hN));
+        let sel = r.ids.slice();
+        r.aplica = true;
+        const ex0 = extremos(sel);
+        if (extender && okD && okH && ex0.length === 2) {   // un solo camino con dos extremos, y los dos nombres se pueden verificar (con «Partida» o una distancia no se alarga nada)
+            ex0.forEach(n0 => {
+                if (toqueDe(n0)) return;
+                let n = n0, tot = 0; const add = [];
+                for (let paso = 0; paso < 8; paso++) {
+                    if (toqueDe(n)) { r.extra = r.extra.concat(add); sel = sel.concat(add); return; }
+                    const cand = (idx.get(n) || []).filter(id => esCalle(id) && !sel.includes(id) && !add.includes(id) && !contraria(id));
+                    if (cand.length !== 1) break;   // sin salida o bifurcación: no se adivina
+                    const s = _pfSeg(cand[0]); if (!s) break;
+                    tot += largo(cand[0]); if (tot > _PLAN_EXTENSION_M) break;
+                    add.push(cand[0]); n = s.fromNodeId === n ? s.toNodeId : s.fromNodeId;
+                }
+                r.falla = true;
+            });
+        }
+        const ex1 = extremos(sel);
+        r.ids = sel; r.metros = Math.round(r.extra.reduce((q, id) => q + largo(id), 0));
+        r.desde = okD ? ex1.some(n => toca(n, dN)) : null; r.hasta = okH ? ex1.some(n => toca(n, hN)) : null;
+    } catch (e) { log('plan verificar: ' + e.message); }
+    return r;
+};
+// Línea de la tarjeta del tramo: ✔ llega a «Guanaco» y a «Independencia» · ⚠ no llega hasta «Puente»
+const _planVerifHtml = (t, ids) => {
+    try {
+        const v = _planVerificar(t, ids, false); if (!v.aplica) return '';
+        const ok = [], mal = [];
+        [['desde', v.desde], ['hasta', v.hasta]].forEach(([k, x]) => { if (x === true) ok.push(t[k]); else if (x === false) mal.push(t[k]); });
+        const nm = x => '«' + escHtml(String(x).replace(/^(avenida|avda\.?|av\.?|calle)\s+/i, '')) + '»';
+        if (mal.length) return `<div class="wct-tj-ruta" style="color:#e65100" title="El extremo de lo seleccionado no toca esa calle: puede faltar un tramo corto. Revisa en el mapa (✏️ Editar para agregar segmentos).">⚠ <b>no llega hasta</b> ${mal.map(nm).join(' ni ')}${ok.length ? ' · sí llega a ' + ok.map(nm).join(' y ') : ''}</div>`;
+        if (ok.length) return `<div class="wct-tj-ruta" style="color:#2e7d32">✔ llega a ${ok.map(nm).join(' y ')}</div>`;
+    } catch (e) { /* sin línea */ }
+    return '';
+};
 const _planLocalizar = t => {
     const out = { centro: null, bbox: null, segIds: [], nA: 0, nB: 0 };
     try {
@@ -22744,7 +22811,7 @@ const _planRender = (forzar) => {
             else ins = act ? '<span class="wct-ins pen">▶ ahora</span>' : '<span class="wct-ins pen">⏳ pendiente</span>';
             const ojo = d ? `<button type="button" class="wct-sw${_planOcultos.has(t.id) ? '' : ' on'}" style="--c:${_planColor(t.ventana)}" role="switch" aria-checked="${_planOcultos.has(t.id) ? 'false' : 'true'}" data-plan-eye="${t.id}" title="${_planOcultos.has(t.id) ? 'Mostrar' : 'Ocultar'} el dibujo de este tramo en el mapa"></button>` : '';
             const ruta = `${escHtml(t.desde)} → ${escHtml(t.hasta)}${_planUnSentido(t) ? ' · <b>' + escHtml(_planCalzadaTxt(t)) + '</b>' : (t.calzada ? ' · ' + escHtml(t.calzada) : '')}${t.orig ? ` <span class="wct-tj-corr" title="Nombres corregidos en la extensión. La web dice: ${escHtml(t.orig.calle)}, ${escHtml(t.orig.desde)} → ${escHtml(t.orig.hasta)}">✏️ corregido</span>` : ''}`;
-            h += `<div class="wct-plan-t wct-tj${listo ? ' ok' : ''}${act ? ' act' : ''}"><div class="wct-plan-n">${_planIgnorado(t) ? '–' : listo ? '✔' : num(t)}</div><div class="wct-plan-d"><div class="wct-tj-l1"><span class="wct-tj-calle">${escHtml(_planTramoTxt(t))}</span>${ins}${ojo}</div><div class="wct-tj-ruta">${ruta}</div>`;
+            h += `<div class="wct-plan-t wct-tj${listo ? ' ok' : ''}${act ? ' act' : ''}"><div class="wct-plan-n">${_planIgnorado(t) ? '–' : listo ? '✔' : num(t)}</div><div class="wct-plan-d"><div class="wct-tj-l1"><span class="wct-tj-calle">${escHtml(_planTramoTxt(t))}</span>${ins}${ojo}</div><div class="wct-tj-ruta">${ruta}</div>${d ? _planVerifHtml(t, d.ids) : ''}`;
             if (f && !listo) h += `<div class="wct-tj-mot ${f.estado}">${escHtml(f.motivo)}</div>`;
             if (listo && d && _planEditando !== t.id) h += `<div class="wct-plan-acc">${_planEdicionBloqueada(v.id) ? '<span class="wct-tj-ruta">ya aplicado</span>' : `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-edit="${t.id}" title="Vuelve a poner sus segmentos en la selección del mapa: sacas los que sobran con un clic, agregas con Shift + clic, y lo tomas otra vez${enCola ? ' (la cola se actualiza sola)' : ''}">✎ Editar</button>`}${(enCola || _planEdicionBloqueada(v.id)) ? '' : `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-undo="${t.id}" title="Soltar este tramo y volver a elegirlo desde cero">↩ Soltar</button>`}</div>`;
             else if (listo && !d && _planIgnorado(t)) h += `<div class="wct-tj-ruta" style="color:#546e7a">Ignorado: este tramo no se carga en la cola.</div><div class="wct-plan-acc">${_planEdicionBloqueada(v.id) ? '<span class="wct-tj-ruta">ya aplicado</span>' : `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-ignsoltar="${t.id}" title="Vuelve a dejarlo pendiente">↩ Reponer</button>`}</div>`;
@@ -22855,6 +22922,8 @@ const _planUbicar = async tid => {
     let ids = loc.segIds.filter(id => getSegById(id) && !tomados.has(Number(id)));
     let deOtraCalzada = 0;
     if (_planUnSentido(t)) { const r = _planRumboCalzada(t.calzada); if (r) { const antes = ids.length; ids = ids.filter(id => _planCalzadaDe(id, r.rumbo) !== 'contraria'); deOtraCalzada = antes - ids.length; } }
+    let extraU = null;   // [v20.5] si el tramo quedaba corto, se completa hasta tocar la calle «hasta» (≤ 80 m)
+    if (ids.length) { const vv = _planVerificar(t, ids, true); if (vv.extra.length) { const nuevos = vv.ids.filter(id => !ids.includes(id) && getSegById(id) && !tomados.has(Number(id))); if (nuevos.length) { ids = ids.concat(nuevos); extraU = { n: nuevos.length, m: vv.metros }; } } }
     if (loc.centro) { try { _centrerSurZoneVisibleOL(loc.centro[0], loc.centro[1], 17); } catch (e) { /* nada */ } }
     let marca = loc.segIds;   // [v20.1] si no queda nada libre, el amarillo muestra los del tramo SOLO de la calzada pedida (antes pintaba también la contraria)
     if (_planUnSentido(t)) { const r2 = _planRumboCalzada(t.calzada); if (r2) marca = loc.segIds.filter(id => _planCalzadaDe(id, r2.rumbo) !== 'contraria'); }
@@ -22862,7 +22931,7 @@ const _planUbicar = async tid => {
     if (ids.length) {
         try { await sdk.Editing.setSelection({ selection: { ids, objectType: 'segment' } }); await _wmeSelection(); }
         catch (e) { log('plan ubicar, selección: ' + e.message); }
-        showToast(`📍 ${_planTramoTxt(t)}: ${ids.length} segmento(s) seleccionados entre ${t.desde} y ${t.hasta}${deOtraCalzada ? ' (' + deOtraCalzada + ' de la otra calzada quedaron fuera)' : ''}. Revisa en el mapa y pulsa «Tomar selección».`, 6000, '#1565c0');
+        showToast(`📍 ${_planTramoTxt(t)}: ${ids.length} segmento(s) seleccionados entre ${t.desde} y ${t.hasta}${deOtraCalzada ? ' (' + deOtraCalzada + ' de la otra calzada quedaron fuera)' : ''}${extraU ? ' · se completó el tramo hasta «' + t.hasta + '» (+' + extraU.n + ' segmento(s), ~' + extraU.m + ' m)' : ''}. Revisa en el mapa y pulsa «Tomar selección».`, 6000, '#1565c0');
     } else if (loc.centro) showToast(`📍 ${_planTramoTxt(t)}: entre ${t.desde} y ${t.hasta}. No pude preseleccionar los segmentos (no están cargados): selecciónalos en el mapa.`, 6000, '#f57c00');
     else {
         const q = `${_planTramoTxt(t)}${_plan.c.comuna ? ', ' + _plan.c.comuna : ''}`, ok = _planBuscarMapa(q);
@@ -23060,6 +23129,7 @@ const _planRevisar = (ts, esc) => {
             let ids = loc.segIds.slice();
             if (_planUnSentido(t)) { const q = _planRumboCalzada(t.calzada); if (q) ids = ids.filter(id => _planCalzadaDe(id, q.rumbo) !== 'contraria'); }
             if (!ids.length) { r.motivo = 'no hay segmentos de «' + t.calle + '» entre «' + t.desde + '» y «' + t.hasta + '»' + (_planUnSentido(t) ? ' en la calzada pedida' : ''); return; }
+            { const vv = _planVerificar(t, ids, true); if (vv.extra.length) { ids = vv.ids; r.extra = vv.extra.length; r.extraM = vv.metros; } r.verif = vv; }   // [v20.5] completa hasta tocar la calle «hasta» (≤ 80 m) y verifica los extremos
             // [v20.1] solo cuentan los tramos de la MISMA ventana: la web repite un mismo tramo físico en cada horario (V1, V3…) y cada ventana se envía aparte a la cola
             const mios = id => (reservados.get(id) || []).filter(d => d && d.ventana === t.ventana);
             const libres = ids.filter(id => !mios(id).length);
