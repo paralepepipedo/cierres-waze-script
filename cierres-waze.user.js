@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.1
+// @version      20.2
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.2: EL AVISO «ESTAS CALLES YA ESTÁN EN LA COLA» solo sale si el horario de lo que ya está en la cola SE CRUZA con el nuevo (antes avisaba por cualquier entrada con los mismos segmentos, aunque fuera otro día u hora: V1, V3…).
 // v20.1: UN MISMO TRAMO EN VARIAS VENTANAS. La web repite el tramo físico en cada horario (V1, V3…): ahora puede tomar los mismos segmentos en cada ventana (solo se evitan duplicados DENTRO de una ventana). 📍 Ubicar, el Play y «Tomar selección» ya no los bloquean; el amarillo, cuando no hay nada libre, marca solo la calzada pedida.
 // v20.0: AL ENVIAR UNA VENTANA A LA COLA el mapa vuelve a la vista en que estaba el analista (antes se quedaba donde terminaba el último paso, p. ej. alejado hacia la comuna).
 // v17.5: AL TERMINAR EL PLAY el mapa encuadra todo lo tomado en la ventana (antes volvía a la comuna y el dibujo quedaba fuera de vista). El dibujo usa la geometría del escaneo si Waze ya descargó el segmento.
@@ -20653,12 +20654,20 @@ const connectOverlay=ov=>{
     });
     // Valider
     // [v17.4] Qué segmentos de la selección ya están en alguna entrada de la cola: { n, entradas:[{e, k}] }
-    const _colaRepetidos=ids=>{
+    // [v20.2] ¿Los horarios de la entrada de la cola y los nuevos se CRUZAN? Sin datos de horario (o fechas ilegibles) se asume que sí: ante la duda, se avisa.
+    const _horariosSeCruzan=(a,b)=>{
+        try{
+            if(!Array.isArray(a)||!a.length||!Array.isArray(b)||!b.length) return true;
+            return a.some(x=>b.some(y=>{ const s1=+new Date(x.start), e1=+new Date(x.end), s2=+new Date(y.start), e2=+new Date(y.end); if([s1,e1,s2,e2].some(isNaN)) return true; return s1<e2 && s2<e1; }));
+        }catch(e){ return true; }
+    };
+    // [v20.2] solo cuenta como «repetido» lo que está en la cola CON UN HORARIO QUE SE CRUZA con el nuevo (la misma calle en otro horario es normal: V1, V3…)
+    const _colaRepetidos=(ids,cierres)=>{
         const mios=new Set(ids.map(Number)), entradas=[]; let todos=new Set();
         (queue||[]).forEach(e=>{
             if(!e||!Array.isArray(e.segIds)||!e.segIds.length) return;
             const comunes=e.segIds.map(Number).filter(id=>mios.has(id));
-            if(comunes.length){ entradas.push({e,k:comunes.length}); comunes.forEach(id=>todos.add(id)); }
+            if(comunes.length && _horariosSeCruzan(e.closures,cierres)){ entradas.push({e,k:comunes.length}); comunes.forEach(id=>todos.add(id)); }
         });
         return { n:todos.size, entradas };
     };
@@ -20723,13 +20732,13 @@ const connectOverlay=ov=>{
             return;
         }
         // [v17.4] ¿Estas calles ya están en la cola? Antes cada pulsación agregaba otra entrada igual, sin avisar.
-        { const rep=_colaRepetidos(validIds);
+        { const rep=_colaRepetidos(validIds,rc.list);
           if(rep.n){
               const todas=rep.n>=validIds.length, casi=rep.n>=validIds.length*0.9;
               const lineas=[todas ? 'Los '+rep.n+' segmentos de tu selección ya están en la cola.' : rep.n+' de los '+validIds.length+' segmentos de tu selección ya están en la cola.'];
               rep.entradas.slice(0,3).forEach(x=>lineas.push('• '+String(x.e.label||'Entrada').slice(0,70)+' · '+x.k+' segmento(s)'+(x.e.detail?' · '+String(x.e.detail).slice(0,70):'')));
               if(rep.entradas.length>3) lineas.push('… y '+(rep.entradas.length-3)+' entrada(s) más');
-              lineas.push('Si las agregas de nuevo, la misma calle quedará dos veces en la cola. Hazlo solo si es para otra fecha u horario.');
+              lineas.push('Si las agregas de nuevo, la misma calle quedará dos veces en la cola con horarios que se cruzan.');
               const k=await _cwCartelElegir({ titulo: casi ? '⚠ Estas calles ya están en la cola' : '⚠ Parte de estas calles ya está en la cola', lineas, botones:[{k:'no',txt:'No agregar',sec:true},{k:'si',txt:'Agregar igual'}] });
               if(k!=='si'){ showToast('No se agregó: esas calles ya estaban en la cola',3500,'#f57c00'); return; }
           } }
