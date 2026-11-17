@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.8
+// @version      20.9
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.9: PLAN POR TRAMOS: EL NOMBRE EXACTO TIENE PRIORIDAD. La comparación de nombres acepta que uno esté CONTENIDO en el otro (pensada para «Valentina Leppe» / «Pasaje Valentina»). MEDIDO en Huechuraba: «Av. Huechuraba» contaba como «Santa Marta de Huechuraba» (66 cruces falsos: el tramo se ubicaba 460 m más al sur, con 4 segmentos que no eran) y «Interior Terminal Los Libertadores» contaba como «Av. Los Libertadores» (15 de 38 segmentos eran del terminal). Ahora hay NIVELES, sin quitar nada que antes se encontraba: (1) CRUCES: se prefieren los nodos donde el nombre es EXACTO (o exacto + orientación, «… Oriente») en la calle y en la calle «desde»/«hasta»; si no hay de esos, los que tienen uno exacto; y solo si no hay ninguno, la comparación por contención de siempre. (2) SEGMENTOS DE LA CALLE: dentro del tramo, si hay segmentos de nombre exacto, se descartan los que solo la CONTIENEN en su nombre; si no hay exactos, se dejan todos como antes. (3) VERIFICACIÓN (línea ✔/⚠): el contacto con la calle «desde»/«hasta» exige nombre exacto cuando existe un cruce exacto; si no, contención. Probado contra la versión anterior con 318 tramos reales y generados de 4 zonas.
 // v20.8: PESTAÑA «BUSCAR»: LAS CASILLAS SON DE CADA EVENTO. Antes la marca era por segmento: si dos eventos compartían calles (típico de un mismo estadio), al marcar uno el otro quedaba con la línea blanca (marca a medias) y «Enviar a cierre» se negaba («Hay segmentos de 2 eventos»). Ahora cada evento guarda sus propias marcas (_srcSelEv: grupo → segmentos); el mapa sigue mostrando la unión de lo marcado.
 // v20.7: PESTAÑA «BUSCAR»: CIERRES DE EVENTOS YA TERMINADOS. Waze solo entrega por zona/vista los cierres terminados hace menos de 7 días; WME, al marcar «Mostrar cierres pasados» en un evento, pide /v1/Features/Closures?includePastClosures=true&majorTrafficEventId=<id>&view=CLOSURE_VIEW_FULL (medido el 17/11/2026: entrega cierres de hace meses, con segmentos, calles y fechas). Ahora, si se escribe un evento en «Evento (MTE)» y la casilla «Traer también los cierres de eventos ya terminados» está marcada, el script ubica el evento en la lista de Waze y pide así sus cierres. «Enviar a cierre» lleva el mapa a la zona si los segmentos no están cargados.
 // v20.6: PESTAÑA «BUSCAR». (1) La búsqueda por NOMBRE de evento usa también los nombres que trae la respuesta de Waze (antes, los eventos que no estaban en la lista del SDK salían como código y nunca coincidían). (2) La lista de resultados ya no se va a la derecha (la flecha tenía margen automático). (3) Si el evento buscado está en la lista de Waze pero no hay cierres, lo dice (los terminados hace más de 7 días ya no los entrega Waze).
@@ -22564,6 +22565,13 @@ const _planNorm = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-
 const _PLAN_ORIENT = new Set(['oriente', 'poniente', 'norte', 'sur', 'centro']);
 const _planCoincide = (x, y) => { if (!x || !y) return false; if (x === y) return true; const c = x.length < y.length ? x : y, l = x.length < y.length ? y : x; return c.length >= 4 && !_PLAN_ORIENT.has(c) && l.includes(c); };
 const _planMisma = (a, b) => _planCoincide(_planNorm(a), _planNorm(b));
+// [v20.9] EL NOMBRE EXACTO TIENE PRIORIDAD. Exacto = igual (normalizado) o igual + una palabra de orientación («Av. X Oriente»). Amplio = la comparación por contención de siempre.
+const _PLAN_ORIENT_EXT = new Set([..._PLAN_ORIENT, 'este', 'oeste']);
+const _planExactoFn = texto => {
+    const q = _planNorm(texto); if (!q) return () => false;
+    return x => { if (x === q) return true; const r = x.startsWith(q) ? x.slice(q.length) : (x.endsWith(q) ? x.slice(0, x.length - q.length) : null); return r != null && _PLAN_ORIENT_EXT.has(r); };
+};
+const _planAmploFn = texto => { const q = _planNorm(texto); return x => _planCoincide(x, q); };
 const _planUnSentido = t => !!t.calzada && !/^(ambas|toda)/i.test(String(t.calzada).trim());   // «Norte», «Sur»…: una sola calzada ⇒ un solo sentido
 var _planHorarioTxt = '';   // horario REAL del Período (cierres normales); var: refreshSmallPreview puede correr antes de que este módulo se evalúe
 const _planHorarioDesde = lista => {
@@ -22741,13 +22749,18 @@ const _planVerificar = (t, ids, extender) => {
         const okD = !_planEsAbierto(t.desde) && !_planEsDistancia(t.desde), okH = !_planEsAbierto(t.hasta) && !_planEsDistancia(t.hasta);
         if (!okD && !okH) return r;
         const idx = _planIdxNodos();
-        const esCalle = id => _pfNombres(id).some(n => _planMisma(n, t.calle));
-        const toca = (nd, nN) => !!nN && (idx.get(nd) || []).some(id => !esCalle(id) && _pfNombres(id).some(n => _planCoincide(_planNorm(n), nN)));
+        const amC = _planAmploFn(t.calle), exC = _planExactoFn(t.calle);   // [v20.9] el nombre exacto tiene prioridad
+        const esCalle = id => _pfNombres(id).some(n => amC(_planNorm(n)));
+        const exSeg = id => _pfNombres(id).some(n => exC(_planNorm(n)));
+        const nodosV = (okD || okH) ? _planNodos().nom : null;
+        const hayCruceExacto = nombre => { const eN = _planExactoFn(nombre); let hay = false; nodosV.forEach(set => { if (!hay && set.size >= 2 && [...set].some(exC) && [...set].some(eN)) hay = true; }); return hay; };
+        const mkToca = nombre => { const f = hayCruceExacto(nombre) ? _planExactoFn(nombre) : _planAmploFn(nombre); return nd => (idx.get(nd) || []).some(id => !esCalle(id) && _pfNombres(id).some(n => f(_planNorm(n)))); };   // exige nombre exacto cuando existe un cruce exacto
+        const tocaD = okD ? mkToca(t.desde) : null, tocaH = okH ? mkToca(t.hasta) : null;
         const rq = _planUnSentido(t) ? _planRumboCalzada(t.calzada) : null;
         const contraria = id => !!rq && _planCalzadaDe(id, rq.rumbo) === 'contraria';
         const largo = id => { const co = _getSegCoords(_pfSeg(id)); return co ? co.slice(1).reduce((q, p, i) => q + _cMetros(co[i], p), 0) : 0; };
         const extremos = sel => { const c = new Map(); sel.forEach(id => { const s = _pfSeg(id); if (!s) return; [s.fromNodeId, s.toNodeId].forEach(n => { if (n) c.set(n, (c.get(n) || 0) + 1); }); }); return [...c].filter(([, k]) => k === 1).map(([n]) => n); };
-        const toqueDe = n => (okD && toca(n, dN)) || (okH && toca(n, hN));
+        const toqueDe = n => (okD && tocaD(n)) || (okH && tocaH(n));
         let sel = r.ids.slice();
         r.aplica = true;
         const ex0 = extremos(sel);
@@ -22757,7 +22770,8 @@ const _planVerificar = (t, ids, extender) => {
                 let n = n0, tot = 0; const add = [];
                 for (let paso = 0; paso < 8; paso++) {
                     if (toqueDe(n)) { r.extra = r.extra.concat(add); sel = sel.concat(add); return; }
-                    const cand = (idx.get(n) || []).filter(id => esCalle(id) && !sel.includes(id) && !add.includes(id) && !contraria(id));
+                    const conExacto = sel.some(exSeg);   // [v20.9] si lo seleccionado tiene nombre exacto, se sigue solo por segmentos de nombre exacto
+                    const cand = (idx.get(n) || []).filter(id => esCalle(id) && (!conExacto || exSeg(id)) && !sel.includes(id) && !add.includes(id) && !contraria(id));
                     if (cand.length !== 1) break;   // sin salida o bifurcación: no se adivina
                     const s = _pfSeg(cand[0]); if (!s) break;
                     tot += largo(cand[0]); if (tot > _PLAN_EXTENSION_M) break;
@@ -22768,7 +22782,7 @@ const _planVerificar = (t, ids, extender) => {
         }
         const ex1 = extremos(sel);
         r.ids = sel; r.metros = Math.round(r.extra.reduce((q, id) => q + largo(id), 0));
-        r.desde = okD ? ex1.some(n => toca(n, dN)) : null; r.hasta = okH ? ex1.some(n => toca(n, hN)) : null;
+        r.desde = okD ? ex1.some(n => tocaD(n)) : null; r.hasta = okH ? ex1.some(n => tocaH(n)) : null;
     } catch (e) { log('plan verificar: ' + e.message); }
     return r;
 };
@@ -22784,12 +22798,14 @@ const _planVerifHtml = (t, ids) => {
     } catch (e) { /* sin línea */ }
     return '';
 };
-const _planLocalizar = t => {
+const _planLocalizar = (t, plano) => {   // [v20.9] plano = sin prioridad de nombre exacto (la comparación de siempre)
     const out = { centro: null, bbox: null, segIds: [], nA: 0, nB: 0 };
     try {
         const { nom, xy, clave } = _planNodos(), calleN = _planNorm(t.calle); if (!calleN) return out;
         const toca = (set, n) => [...set].some(x => _planCoincide(x, n));
-        const cruce = nombre => { const n = _planNorm(nombre), r = []; if (!n) return r; nom.forEach((set, nd) => { if (set.size >= 2 && toca(set, calleN) && toca(set, n) && xy.has(nd)) r.push(xy.get(nd)); }); return r; };
+        const exC = plano ? () => false : _planExactoFn(t.calle), tocaF = (set, f) => [...set].some(f);
+        // [v20.9] por NIVELES: 2 = calle y «desde/hasta» con nombre exacto · 1 = uno de los dos exacto · 0 = solo por contención (lo de siempre). Se usa el nivel más alto que tenga cruces.
+        const cruce = nombre => { const n = _planNorm(nombre), niv = [[], [], []]; if (!n) return []; const exN = plano ? () => false : _planExactoFn(nombre); nom.forEach((set, nd) => { if (set.size >= 2 && toca(set, calleN) && toca(set, n) && xy.has(nd)) niv[(tocaF(set, exC) ? 1 : 0) + (tocaF(set, exN) ? 1 : 0)].push(xy.get(nd)); }); return niv[2].length ? niv[2] : (niv[1].length ? niv[1] : niv[0]); };
         const A = cruce(t.desde), B = cruce(t.hasta);
         out.nA = A.length; out.nB = B.length;
         const d2 = (p, q) => { const k = Math.cos(p[1] * Math.PI / 180); return ((p[0] - q[0]) * k) ** 2 + (p[1] - q[1]) ** 2; };
@@ -22825,6 +22841,7 @@ const _planLocalizar = t => {
             const pe = Math.max(0.00015, Math.hypot(a[0] - b[0], a[1] - b[1]) * 0.03), est = [Math.min(a[0], b[0]) - pe, Math.min(a[1], b[1]) - pe, Math.max(a[0], b[0]) + pe, Math.max(a[1], b[1]) + pe];
             out.bboxEst = est;
             _pfSegs().forEach((s, id) => { if (esCalle(id)) { const m = _planMidSeg(id); if (m && m[0] >= est[0] && m[0] <= est[2] && m[1] >= est[1] && m[1] <= est[3]) out.segIds.push(Number(id)); } });
+            { const exs = out.segIds.filter(id => _pfNombres(id).some(n => exC(_planNorm(n)))); if (exs.length && exs.length < out.segIds.length) { out.otraCalle = out.segIds.length - exs.length; out.segIds = exs; } }   // [v20.9] hay segmentos de nombre exacto: los que solo lo contienen («Interior Terminal Los Libertadores») no son la calle
             // [v17.5] CALLES LATERALES: un segmento que va perpendicular al tramo (p. ej. «Pasaje Huérfanos» saliendo de «Huérfanos») no es parte del tramo. MEDIDO: los segmentos de la calle se desvían 1-3° del eje del tramo; el pasaje, 89°.
             // Se descarta si (1) se desvía más de 60° del eje A→B, (2) mide ≥ 15 m y (3) no es una curva real de la calle (que lo uniría por AMBOS extremos a otros segmentos del tramo). No se aplica a tramos de menos de 50 m ni deja el tramo vacío.
             if (out.segIds.length > 1 && _cMetros(a, b) >= 50) {
@@ -22848,6 +22865,7 @@ const _planLocalizar = t => {
             const ms = []; _pfSegs().forEach((sg, id) => { if (esCalle(id)) { const m = _planMidSeg(id); if (m) ms.push(m); } });
             if (ms.length) out.centro = [ms.reduce((x, m) => x + m[0], 0) / ms.length, ms.reduce((x, m) => x + m[1], 0) / ms.length];
         }
+        if (!plano && a && b && !out.segIds.length) { const o2 = _planLocalizar(t, true); if (o2.segIds.length) return o2; }   // [v20.9] los cruces exactos no dieron segmentos: se vuelve a lo de siempre
     } catch (e) { log('plan localizar: ' + e.message); }
     return out;
 };
