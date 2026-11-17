@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.6
+// @version      20.7
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.7: PESTAÑA «BUSCAR»: CIERRES DE EVENTOS YA TERMINADOS. Waze solo entrega por zona/vista los cierres terminados hace menos de 7 días; WME, al marcar «Mostrar cierres pasados» en un evento, pide /v1/Features/Closures?includePastClosures=true&majorTrafficEventId=<id>&view=CLOSURE_VIEW_FULL (medido el 17/11/2026: entrega cierres de hace meses, con segmentos, calles y fechas). Ahora, si se escribe un evento en «Evento (MTE)» y la casilla «Traer también los cierres de eventos ya terminados» está marcada, el script ubica el evento en la lista de Waze y pide así sus cierres. «Enviar a cierre» lleva el mapa a la zona si los segmentos no están cargados.
 // v20.6: PESTAÑA «BUSCAR». (1) La búsqueda por NOMBRE de evento usa también los nombres que trae la respuesta de Waze (antes, los eventos que no estaban en la lista del SDK salían como código y nunca coincidían). (2) La lista de resultados ya no se va a la derecha (la flecha tenía margen automático). (3) Si el evento buscado está en la lista de Waze pero no hay cierres, lo dice (los terminados hace más de 7 días ya no los entrega Waze).
 // v20.5: VERIFICAR Y COMPLETAR EL TRAMO. Cada tarjeta dice «✔ llega a Guanaco y a Independencia» o «⚠ no llega hasta Puente» (comprueba por nodo que los extremos toquen la calle «desde»/«hasta»). 📍 Ubicar y el ▶ Play completan solos un tramo que quedó corto (misma calle, un solo camino, ≤ 80 m, sin ir contra la calzada); nunca quitan segmentos.
 // v20.4: «IR A LA COMUNA» deja el mapa EXACTAMENTE en las coordenadas de la comuna (antes lo desplazaba para esquivar el panel y, según dónde estuviera el panel, terminaba en otra comuna: Independencia → Providencia).
@@ -1296,6 +1297,9 @@ GM_addStyle(`
 .wct-src-ev-id { font-family:monospace; background:rgba(0,0,0,.07); border-radius:3px; padding:0 4px; font-size:0.9em; flex:none; }
 .wct-src-meta { color:var(--wct-text2); font-size:0.9em; white-space:nowrap; }
 .wct-src-sg { border-top:1px solid var(--wct-border); }
+.wct-src-viejo { padding:3px 8px 3px 20px; background:#fff3e0; color:#8a4b00; font-size:0.75em; border-top:1px solid var(--wct-border); }   /* [v20.7] */
+.wct-src-coincide { margin-top:5px; padding:3px 8px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:var(--wct-radius); font-size:0.8em; color:#1b5e20; }
+.wct-src-pasado-nota { font-size:0.7em; color:var(--wct-text2); margin:2px 0 0 18px; line-height:1.35; }
 .wct-src-sg-h { display:flex; align-items:center; gap:6px; padding:3px 6px 3px 18px; cursor:pointer; font-size:0.833em; }
 .wct-src-ev-h .wct-src-chev, .wct-src-sg-h .wct-src-chev { margin-inline-start:0; }   /* [v20.6] la flecha de los resultados iba al extremo derecho (la regla de arriba es para los títulos de sección) y arrastraba toda la fila */
 .wct-src-sg-w { font-weight:600; }
@@ -11241,6 +11245,51 @@ const _srcNombresVista=async()=>{
         if(r.ok) _srcGuardarNombres(await r.json());
     }catch(e){ log('recherche, noms des événements : '+e.message); }
 };
+// ─── [v20.7] CIERRES DE EVENTOS YA TERMINADOS ───
+// Waze entrega por zona/vista solo los cierres terminados hace < 7 días. WME, al marcar «Mostrar cierres pasados» en un evento, pide este otro servicio, sin límite de antigüedad: devuelve los cierres del evento + sus segmentos, calles y nombre.
+let _srcExtra={closures:[],eventos:[],fallos:[]};   // lo traído por id de evento en la última búsqueda
+const _srcNomSeg=new Map();                          // id de segmento → nombre de calle (de la respuesta)
+const _srcEventosQueCoinciden=kw=>{ kw=String(kw||'').trim().toLowerCase(); if(!kw) return []; const out=[]; const vistos=new Set(); (_wme.mte||[]).forEach(m=>{ const n=m&&m.names&&m.names[0]&&m.names[0].value; if(n&&m.id&&!vistos.has(String(m.id))&&n.toLowerCase().includes(kw)){ vistos.add(String(m.id)); out.push({id:String(m.id),name:n,start:m.startDate||'',end:m.endDate||''}); } }); return out; };
+const _srcTraerCierresEvento=async id=>{
+    try{
+        const r=await fetch(`${_descartesBase(_wmeEnv())}/app/v1/Features/Closures?includePastClosures=true&majorTrafficEventId=${encodeURIComponent(id)}&view=CLOSURE_VIEW_FULL`,{credentials:'include'});
+        if(!r.ok) return {ok:false,erreur:'HTTP '+r.status};
+        const j=await r.json();
+        const rc=j&&j.roadClosures&&j.roadClosures.objects; if(!Array.isArray(rc)) return {ok:false,erreur:'forma inesperada'};
+        _srcGuardarNombres(j);
+        const calles=new Map((((j.streets&&j.streets.objects)||[])).map(x=>[x.id,x.name||'']));
+        (((j.segments&&j.segments.objects)||[])).forEach(sg=>{ const nm=calles.get(sg.primaryStreetID); if(nm) _srcNomSeg.set(Number(sg.id),nm); });
+        return {ok:true,closures:rc.filter(o=>o.closureType!=='TURN').map(o=>({..._apiToClosure(o),_extra:true}))};
+    }catch(e){ return {ok:false,erreur:String(e.message||e).slice(0,80)}; }
+};
+const _srcCargarExtra=async F=>{
+    _srcExtra={closures:[],eventos:[],fallos:[]};
+    if(!F.mteKw || !$id('wct-src-past')?.checked) return;
+    const evs=_srcEventosQueCoinciden(F.mteKw).slice(0,6);
+    _srcExtra.eventos=evs;
+    const res=await Promise.all(evs.map(e=>_srcTraerCierresEvento(e.id)));
+    res.forEach((r,i)=>{ if(r.ok) _srcExtra.closures.push(...r.closures); else _srcExtra.fallos.push({name:evs[i].name,erreur:r.erreur}); });
+};
+// «hace 5 meses» / «hace 12 días» a partir de «2026-05-31 23:59»
+const _srcHaceTxt=fin=>{ const A=_srcFH(fin); if(!A) return ''; const d=Math.floor((Date.now()-new Date(A.y,A.mo-1,A.d,+A.h,+A.mi).getTime())/86400000); if(d<1) return 'hoy'; if(d<60) return 'hace '+d+(d===1?' día':' días'); const m=Math.floor(d/30.4); return 'hace '+m+(m===1?' mes':' meses'); };
+// La lista de coincidencias bajo el campo de evento (se actualiza al escribir)
+const _srcActualizarCoincide=()=>{
+    const el=$id('wct-src-past-match'); if(!el) return;
+    const kw=($id('wct-src-mte')?.value||'').trim();
+    if(!kw || !$id('wct-src-past')?.checked){ el.style.display='none'; el.innerHTML=''; return; }
+    const ev=_srcEventosQueCoinciden(kw);
+    el.style.display='';
+    if(!ev.length){ el.style.cssText='background:#fff8e1;border-color:#ffd54f;color:#5d4037'; el.innerHTML='No hay un evento con ese nombre en tu lista de Waze. La lista se carga desde la pestaña Eventos de WME (↻).'; return; }
+    el.style.cssText=''; const dd=m=>{ const a=_srcFH(m.start), b=_srcFH(m.end); return a&&b?` <span class="wct-src-meta">(${String(a.d).padStart(2,'0')}-${_SRC_MES[a.mo-1]} → ${String(b.d).padStart(2,'0')}-${_SRC_MES[b.mo-1]})</span>`:''; };
+    el.innerHTML='Coincide con '+ev.length+' evento'+(ev.length===1?'':'s')+' de tu lista: '+ev.slice(0,3).map(m=>'<b>'+escHtml(m.name)+'</b>'+dd(m)).join(', ')+(ev.length>3?' …':'');
+};
+// Lleva el mapa a la zona de esos cierres (si los segmentos aún no están cargados en WME)
+const _srcIrAZona=pts=>{
+    let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity; pts.forEach(([lo,la])=>{ if(lo<x0)x0=lo; if(lo>x1)x1=lo; if(la<y0)y0=la; if(la>y1)y1=la; });
+    if(!isFinite(x0)) return false; const cLat=(y0+y1)/2;
+    const z=Math.max(15,Math.min(17,_zoomPourBBox(x1-x0,y1-y0,15,17,0,cLat)));
+    _centrerSurZoneVisible((x0+x1)/2,cLat,z); return true;
+};
 const runSearch=async()=>{
     const resEl=$id('wct-src-results');
     if(!resEl) return;
@@ -11284,6 +11333,8 @@ const runSearch=async()=>{
                 const sel=$id('wct-src-zone'); if(sel) sel.value='0';
             }
         }
+        if(wantSeg) await _srcCargarExtra(F);   // [v20.7]
+        else _srcExtra={closures:[],eventos:[],fallos:[]};
     } finally {
         // Toujours réarmer : sinon une erreur laisserait le bouton grisé pour de bon.
         _srcBusy(false,0);
@@ -11295,7 +11346,12 @@ const runSearch=async()=>{
 
     if(!nSeg && !nTurn){
         let extra='';
-        if(F.mteKw){   // [v20.6] el evento está en la lista de Waze pero no hay cierres suyos: decirlo (puede haber terminado hace más de 7 días: Waze ya no los entrega)
+        if(F.mteKw && $id('wct-src-past')?.checked){   // [v20.7] se pidieron los cierres por evento: decir qué pasó
+            const nombres=new Set(_srcExtra.eventos.map(e=>e.name));
+            if(!nombres.size) extra=`<p style="color:var(--wct-orange);font-size:0.833em;margin-top:6px">⚠️ No hay un evento «${escHtml(F.mteKw)}» en tu lista de Waze. La lista se carga desde la pestaña Eventos de WME (↻): si el evento es de otra comuna, ve a esa zona, abre Eventos y vuelve a buscar.</p>`;
+            else if(_srcExtra.fallos.length) extra=`<p style="color:var(--wct-red);font-size:0.833em;margin-top:6px">⚠️ No pude pedir a Waze los cierres de ${_srcExtra.fallos.map(f=>'«'+escHtml(f.name)+'» ('+escHtml(f.erreur)+')').join(', ')}. Vuelve a intentarlo.</p>`;
+            else extra=`<p style="color:var(--wct-orange);font-size:0.833em;margin-top:6px">ℹ️ El evento ${[...nombres].slice(0,3).map(n=>'«'+escHtml(n)+'»').join(', ')} está en tu lista de Waze, pero Waze no tiene cierres suyos (o no coinciden con los demás filtros: estado, fechas, descripción, fuente).</p>`;
+        } else if(F.mteKw){   // [v20.6] el evento está en la lista de Waze pero no hay cierres suyos: decirlo (puede haber terminado hace más de 7 días: Waze ya no los entrega)
             const nombres=new Set(); (_wme.mte||[]).forEach(m=>{ const n=m?.names?.[0]?.value; if(n && n.toLowerCase().includes(F.mteKw)) nombres.add(n); });
             if(nombres.size) extra=`<p style="color:var(--wct-orange);font-size:0.833em;margin-top:6px">ℹ️ El evento ${[...nombres].slice(0,3).map(n=>'«'+escHtml(n)+'»').join(', ')} está en tu lista de Waze, pero no hay cierres suyos en esta búsqueda. Si terminó hace más de 7 días, Waze ya no entrega sus cierres a la búsqueda.</p>`;
         }
@@ -11374,7 +11430,16 @@ const _srcEnviarACierre=async()=>{
     _srcGrupos.forEach(g=>g.subs.forEach(s=>{ const ids=s.sids.filter(id=>marcados.includes(id)); if(ids.length) tocados.push({g,s,ids}); }));
     const eventos=new Set(tocados.map(x=>x.g.ek));
     if(eventos.size>1){ showToast(`⚠️ Hay segmentos de ${eventos.size} eventos: deja marcado uno solo para enviarlo a cierre`,5000,'#f57c00'); return; }
-    const enModelo=marcados.filter(id=>getSegById(id));
+    let enModelo=marcados.filter(id=>getSegById(id));
+    if(enModelo.length<marcados.length){   // [v20.7] cierres de un evento fuera de la vista: se lleva el mapa a esa zona y se espera a que WME cargue los segmentos
+        const pts=[]; marcados.forEach(id=>{ if(!getSegById(id)){ const g=_srcFoundSegs.get(id)?.geom; if(g) g.forEach(p=>pts.push(p)); } });
+        if(pts.length && _srcIrAZona(pts)){
+            showToast('📍 Llevando el mapa a la zona de esos cierres…',3500,'#1565c0');
+            const t0=Date.now();
+            while(Date.now()-t0<9000){ await new Promise(r=>setTimeout(r,400)); if(marcados.every(id=>getSegById(id))) break; }
+            enModelo=marcados.filter(id=>getSegById(id));
+        }
+    }
     if(!enModelo.length){ showToast('⚠️ Esos segmentos no están cargados en el mapa: acércate a la zona (o búscalos por la vista actual) y vuelve a intentar',5500,'#f57c00'); return; }
     try{ await sdk.Editing.setSelection({selection:{ids:enModelo,objectType:'segment'}}); await _wmeSelection(); }
     catch(e){ showToast('⚠️ No se pudo seleccionar en el mapa: '+e.message,4500,'#e53935'); return; }
@@ -11433,6 +11498,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
         // et la recherche en vue courante rendait alors zéro résultat sans rien dire.
         try{ all=(_fermeturesChargees()||[]).map(c=>({...c,_provider:c._provider ?? _creditDe(c)})); }catch(e){}
     }
+    if(_srcExtra.closures.length){ const ya=new Set(all.map(c=>String(c.id))); all=all.concat(_srcExtra.closures.filter(c=>!ya.has(String(c.id)))); }   // [v20.7]
     const matched=all.filter(cl=>_srcMatch(cl,F,'trafficEventId')
         && _srcPartnerMatch(cl._provider??null, F.partner));
 
@@ -11443,7 +11509,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
             // ⚠️ En vue courante on écarte les segments absents du modèle (données
             // incomplètes). En mode ZONE c'est l'inverse : presque AUCUN n'est chargé,
             // et les écarter viderait le résultat. On les garde, sans nom de rue.
-            if(!zone && !getSegById(sid)) return;
+            if(!zone && !cl._extra && !getSegById(sid)) return;
             bySegId.set(sid,{closures:[],mtes:new Map(),statuses:new Set(),descriptions:new Set(),providers:new Set(),geom:null});
         }
         const entry=bySegId.get(sid);
@@ -11472,7 +11538,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
         sid,
         // null = segment hors de la vue, nom INCONNU. À ne pas confondre avec « No name »
         // (une rue réellement sans nom) : getSegName rendrait le second pour le premier.
-        name: getSegById(sid) ? getSegName(sid) : null,
+        name: getSegById(sid) ? getSegName(sid) : (_srcNomSeg.get(Number(sid))||null),   // [v20.7] sin el segmento cargado, el nombre de la respuesta del evento
         geom: entry.geom,
         count:entry.closures.length,
         statuses:[...entry.statuses].sort(),
@@ -11485,8 +11551,9 @@ const _srcBlockSegments=(resEl,F,zone)=>{
     matched.forEach(cl=>{
         const sid=cl.segmentId; if(!bySegId.has(sid)) return;
         const ek=cl.trafficEventId?String(cl.trafficEventId):'';
-        if(!evs.has(ek)){ const m=ek?_srcGetMte(ek):{name:'',resolved:true}; evs.set(ek,{ek,name:m.name,resolved:m.resolved,segs:new Map()}); }
+        if(!evs.has(ek)){ const m=ek?_srcGetMte(ek):{name:'',resolved:true}; evs.set(ek,{ek,name:m.name,resolved:m.resolved,segs:new Map(),extra:false,maxEnd:''}); }
         const g=evs.get(ek);
+        if(cl._extra) g.extra=true; if((cl.endDate||'')>g.maxEnd) g.maxEnd=cl.endDate||'';   // [v20.7]
         if(!g.segs.has(sid)) g.segs.set(sid,new Map());
         g.segs.get(sid).set((cl.startDate||'')+'|'+(cl.endDate||''),{s:cl.startDate||'',e:cl.endDate||''});
     });
@@ -11500,7 +11567,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
         });
         const sl=[...subs.values()].sort((a,b)=>a.wkey.localeCompare(b.wkey));
         sl.forEach(s=>s.sids.sort((a,b)=>a-b));
-        return {ek:g.ek,name:g.name,resolved:g.resolved,subs:sl,n:g.segs.size};
+        return {ek:g.ek,name:g.name,resolved:g.resolved,subs:sl,n:g.segs.size,extra:g.extra,maxEnd:g.maxEnd};
     }).sort((a,b)=>(a.name||'￿').toLowerCase().localeCompare((b.name||'￿').toLowerCase())||a.ek.localeCompare(b.ek));   // «Sin evento» al final
     _srcGrupos=grupos;
     _srcSel=new Set();
@@ -11570,6 +11637,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
               +(g.ek?`<span class="wct-src-ev-id" title="ID del evento: ${escHtml(g.ek)}">#${escHtml(g.ek.length>12?g.ek.slice(0,12)+'…':g.ek)}</span>`:'')
               +`<span class="wct-src-meta">${g.n} seg · ${g.subs.length} ventana${g.subs.length===1?'':'s'}</span>`
               +`<span class="wct-src-queued" data-qtag="${gi}" style="display:none">✔ en cola</span></div>`;
+            { const A=g.extra&&_srcFH(g.maxEnd); if(A && new Date(A.y,A.mo-1,A.d,+A.h,+A.mi).getTime()<Date.now()) h+=`<div class="wct-src-viejo">🕓 Evento <b>terminado ${_srcHaceTxt(g.maxEnd)}</b> · cierres pedidos directo a Waze por el evento</div>`; }   // [v20.7]
             if(abierto) g.subs.forEach((s,si)=>{
                 const ab2=_srcExp.has(`s${gi}_${si}`), nS=s.sids.filter(id=>_srcSel.has(id)).length, w0=s.wins[0], w1=s.wins[s.wins.length-1];
                 const txt=s.wins.length===1 ? _srcVentTxt(w0.s,w0.e) : `${s.wins.length} ventanas · ${_srcVentTxt(w0.s,w0.e)} … ${_srcFH(w1.e)?_srcFH(w1.e).f.slice(8)+'-'+_SRC_MES[_srcFH(w1.e).mo-1]:''}`;
@@ -19583,6 +19651,10 @@ const buildOverlay=()=>{
             <span class="wct-src-andor-lbl" style="font-size:0.75em;color:var(--wct-text2)">${t('srcTipAndOrLbl')}</span>
           </div>
           <input id="wct-src-mte" class="wct-input" type="text" placeholder="${escHtml(t('srcLblMte'))}" style="width:100%" title="${t('srcTipMte')}">
+          <!-- [v20.7] eventos ya terminados: se piden por el id del evento (como hace WME con «Mostrar cierres pasados») -->
+          <label class="wct-src-status-cb" style="margin-top:6px;font-size:0.8em" title="Waze solo entrega por zona los cierres terminados hace menos de 7 días. Con esto se piden directo por el evento, aunque haya terminado hace meses."><input type="checkbox" id="wct-src-past" checked> <span><b>Traer también los cierres de eventos ya terminados</b></span></label>
+          <div class="wct-src-pasado-nota">Waze solo entrega por zona los cierres terminados hace menos de 7 días. Con esto se piden <b>directo por el evento</b>, aunque haya terminado hace meses. Solo eventos de <b>tu lista de Waze</b>.</div>
+          <div id="wct-src-past-match" class="wct-src-coincide" style="display:none"></div>
         </div>
 
         <div class="wct-src-section wct-src-fold" data-sec="partner" title="${t('srcTipPartner')}">${t('srcSectionPartner')}<span class="wct-src-mark"></span><span class="wct-src-chev">&#x25BC;</span></div>
@@ -20570,10 +20642,13 @@ const connectOverlay=ov=>{
         if(h) h.style.display = Number($id('wct-src-zone').value||0)>0 ? 'block' : 'none';
     });
 
+    $id('wct-src-mte')?.addEventListener('input',_srcActualizarCoincide);   // [v20.7]
+    $id('wct-src-past')?.addEventListener('change',_srcActualizarCoincide);
     $id('wct-src-run')?.addEventListener('click',runSearch);
     $id('wct-src-clear')?.addEventListener('click',()=>{
         ['wct-src-start-after','wct-src-start-before','wct-src-end-after','wct-src-end-before'].forEach(id=>{const el=$id(id);if(el)el.value='';});
         ['wct-src-desc','wct-src-mte'].forEach(id=>{const el=$id(id);if(el)el.value='';});
+        try{ _srcActualizarCoincide(); }catch(e){}   // [v20.7]
         // Remettre toutes les checkboxes à coché
         const cbAll=$id('wct-src-status-all');
         if(cbAll){cbAll.checked=true;cbAll.dispatchEvent(new Event('change'));}
