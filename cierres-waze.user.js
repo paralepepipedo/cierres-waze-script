@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.7
+// @version      20.8
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.8: PESTAÑA «BUSCAR»: LAS CASILLAS SON DE CADA EVENTO. Antes la marca era por segmento: si dos eventos compartían calles (típico de un mismo estadio), al marcar uno el otro quedaba con la línea blanca (marca a medias) y «Enviar a cierre» se negaba («Hay segmentos de 2 eventos»). Ahora cada evento guarda sus propias marcas (_srcSelEv: grupo → segmentos); el mapa sigue mostrando la unión de lo marcado.
 // v20.7: PESTAÑA «BUSCAR»: CIERRES DE EVENTOS YA TERMINADOS. Waze solo entrega por zona/vista los cierres terminados hace menos de 7 días; WME, al marcar «Mostrar cierres pasados» en un evento, pide /v1/Features/Closures?includePastClosures=true&majorTrafficEventId=<id>&view=CLOSURE_VIEW_FULL (medido el 17/11/2026: entrega cierres de hace meses, con segmentos, calles y fechas). Ahora, si se escribe un evento en «Evento (MTE)» y la casilla «Traer también los cierres de eventos ya terminados» está marcada, el script ubica el evento en la lista de Waze y pide así sus cierres. «Enviar a cierre» lleva el mapa a la zona si los segmentos no están cargados.
 // v20.6: PESTAÑA «BUSCAR». (1) La búsqueda por NOMBRE de evento usa también los nombres que trae la respuesta de Waze (antes, los eventos que no estaban en la lista del SDK salían como código y nunca coincidían). (2) La lista de resultados ya no se va a la derecha (la flecha tenía margen automático). (3) Si el evento buscado está en la lista de Waze pero no hay cierres, lo dice (los terminados hace más de 7 días ya no los entrega Waze).
 // v20.5: VERIFICAR Y COMPLETAR EL TRAMO. Cada tarjeta dice «✔ llega a Guanaco y a Independencia» o «⚠ no llega hasta Puente» (comprueba por nodo que los extremos toquen la calle «desde»/«hasta»). 📍 Ubicar y el ▶ Play completan solos un tramo que quedó corto (misma calle, un solo camino, ≤ 80 m, sin ir contra la calzada); nunca quitan segmentos.
@@ -11295,7 +11296,7 @@ const runSearch=async()=>{
     if(!resEl) return;
     if(_srcRunning) return;                 // déjà en cours : ignorer le clic
     _srcClearRings();
-    _srcFoundSegs=null; _srcFoundTurns=null; _srcGrupos=[]; _srcSel=new Set(); _srcDesdeBusqueda=null;
+    _srcFoundSegs=null; _srcFoundTurns=null; _srcGrupos=[]; _srcSel=new Set(); _srcSelEv=new Map(); _srcDesdeBusqueda=null;
 
     const wantSeg  = $id('wct-src-tgt-seg')?.checked;
     const wantTurn = $id('wct-src-tgt-turn')?.checked;
@@ -11371,7 +11372,10 @@ const runSearch=async()=>{
 // había cómo elegir solo uno. Ahora: evento (nombre + #ID) ▸ ventana de fechas idéntica ▸ segmentos, todo con casillas;
 // el mapa sigue lo marcado y «Enviar a cierre» lleva a la pestaña Cierre solo lo marcado.
 var _wctValidar=null;             // «Validar y añadir a la cola» como función (la fija el panel); la usa el plan de carga
-let _srcSel=new Set();            // ids de segmento marcados
+let _srcSel=new Set();            // ids de segmento marcados (unión de las marcas de todos los eventos: es lo que sigue el mapa)
+let _srcSelEv=new Map();          // [v20.8] grupo (evento) → Set de ids marcados EN ESE evento: la casilla de un evento no toca la de otro aunque compartan calles
+const _srcSelRecalc=()=>{ _srcSel=new Set(); _srcSelEv.forEach(st=>st.forEach(id=>_srcSel.add(id))); };
+const _srcSelDe=gi=>{ let st=_srcSelEv.get(gi); if(!st){ st=new Set(); _srcSelEv.set(gi,st); } return st; };
 let _srcGrupos=[];                // [{ek,name,resolved,n,subs:[{wkey,wins,sids}]}] del último resultado
 let _srcExp=new Set();            // nodos desplegados: 'e<g>' · 's<g>_<s>'
 let _srcRebuild=null;             // redibuja el árbol (lo fija el bloque)
@@ -11425,9 +11429,10 @@ const _srcPintarMarcas=()=>{
 const _srcEnviarACierre=async()=>{
     const irCierre=()=>setTimeout(()=>document.querySelector('.wct-main-tab[data-tab="cfg"]')?.click(),80);
     if(!_srcFoundSegs||!_srcFoundSegs.size){ irCierre(); return; }   // sin resultados: como antes, solo cambia de pestaña
-    const marcados=_srcSel.size ? [..._srcSel] : [..._srcFoundSegs.keys()].map(Number);
+    const sinMarca=!_srcSel.size;   // [v20.8] sin marcas = todos los encontrados; con marcas, lo marcado EN CADA evento
+    const marcados=sinMarca ? [..._srcFoundSegs.keys()].map(Number) : [..._srcSel];
     const tocados=[];
-    _srcGrupos.forEach(g=>g.subs.forEach(s=>{ const ids=s.sids.filter(id=>marcados.includes(id)); if(ids.length) tocados.push({g,s,ids}); }));
+    _srcGrupos.forEach((g,gi)=>{ const st=_srcSelEv.get(gi); g.subs.forEach(s=>{ const ids=s.sids.filter(id=>sinMarca || (st && st.has(id))); if(ids.length) tocados.push({g,s,ids}); }); });
     const eventos=new Set(tocados.map(x=>x.g.ek));
     if(eventos.size>1){ showToast(`⚠️ Hay segmentos de ${eventos.size} eventos: deja marcado uno solo para enviarlo a cierre`,5000,'#f57c00'); return; }
     let enModelo=marcados.filter(id=>getSegById(id));
@@ -11481,7 +11486,7 @@ const _srcTrasValidar=entry=>{
         const ids=new Set((entry.segIds||[]).map(Number));
         if(!d.ids.some(id=>ids.has(Number(id)))) return;
         _srcDesdeBusqueda=null;
-        ids.forEach(id=>_srcSel.delete(id));
+        _srcSelEv.forEach(st=>ids.forEach(id=>st.delete(id))); _srcSelRecalc();   // [v20.8]
         _srcActualizarBoton(); if(_srcRebuild) _srcRebuild();
         let faltan=0; _srcGrupos.forEach(g=>g.subs.forEach(s=>{ if(!s.sids.every(id=>(queue||[]).some(e=>(e.segIds||[]).map(Number).includes(id)))) faltan++; }));
         setTimeout(()=>document.querySelector('.wct-main-tab[data-tab="src"]')?.click(),350);
@@ -11570,7 +11575,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
         return {ek:g.ek,name:g.name,resolved:g.resolved,subs:sl,n:g.segs.size,extra:g.extra,maxEnd:g.maxEnd};
     }).sort((a,b)=>(a.name||'￿').toLowerCase().localeCompare((b.name||'￿').toLowerCase())||a.ek.localeCompare(b.ek));   // «Sin evento» al final
     _srcGrupos=grupos;
-    _srcSel=new Set();
+    _srcSel=new Set(); _srcSelEv=new Map();
     _srcExp=new Set();
     if(grupos.length<=3) grupos.forEach((g,gi)=>_srcExp.add('e'+gi));
     if(grupos.length===1 && grupos[0].subs.length===1) _srcExp.add('s0_0');
@@ -11602,7 +11607,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
         else                       { va=(a.providers[0]||'').toLowerCase(); vb=(b.providers[0]||'').toLowerCase(); }
         if(va<vb) return -sortDir; if(va>vb) return sortDir; return 0;
     };
-    const tablaHtml=sids=>{
+    const tablaHtml=(sids,gi)=>{   // [v20.8] gi = evento al que pertenece la tabla
         let h=`<table class="wct-src-table"><thead><tr><th style="width:18px"></th><th></th>`;
         COLS.forEach(col=>{
             const cls=sortKey===col.key?(sortDir===1?'sort-asc':'sort-desc'):'';
@@ -11616,7 +11621,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
             const provHtml=row.providers.length?row.providers.map(p=>`<div class="wct-src-prov-item" title="${escHtml(p)}">${escHtml(p)}</div>`).join(''):`<span class="wct-src-prov-none" title="${escHtml(t('srcProvNoneTip'))}">—</span>`;
             // Nom inconnu (segment hors vue) : on le DIT, on ne l'invente pas.
             const nameHtml=row.name!==null?`<span class="wct-src-name" title="${escHtml(row.name)}">${escHtml(row.name)}</span>`:`<span class="wct-src-name wct-src-name-off" title="${escHtml(t('srcNameOffView'))}">—</span>`;
-            h+=`<tr data-sid="${row.sid}"><td><input type="checkbox" data-chk="seg" data-sid="${row.sid}"${_srcSel.has(row.sid)?' checked':''}></td>`
+            h+=`<tr data-sid="${row.sid}"><td><input type="checkbox" data-chk="seg" data-g="${gi}" data-sid="${row.sid}"${(_srcSelEv.get(gi)||new Set()).has(row.sid)?' checked':''}></td>`
               +`<td><button class="wct-src-center" data-sid="${row.sid}" title="${escHtml(t('srcTipCenterRow'))}">&#x1F3AF;</button></td>`
               +`<td style="font-family:monospace" title="${row.sid}">${row.sid}</td><td>${nameHtml}</td><td style="text-align:center">${row.count}</td>`
               +`<td>${statusBadges||'—'}</td><td><div class="wct-src-desc-cell">${descHtml}</div></td><td><div class="wct-src-prov-cell">${provHtml}</div></td></tr>`;
@@ -11628,7 +11633,7 @@ const _srcBlockSegments=(resEl,F,zone)=>{
     const build=()=>{
         let h='';
         grupos.forEach((g,gi)=>{
-            const abierto=_srcExp.has('e'+gi), todos=g.subs.flatMap(s=>s.sids), nSel=todos.filter(id=>_srcSel.has(id)).length;
+            const stG=_srcSelEv.get(gi)||new Set(), abierto=_srcExp.has('e'+gi), todos=g.subs.flatMap(s=>s.sids), nSel=todos.filter(id=>stG.has(id)).length;
             const nombre=g.ek==='' ? 'Sin evento (cierres de editor)' : g.name;
             h+=`<div class="wct-src-ev"><div class="wct-src-ev-h" data-tog="e${gi}">`
               +`<span class="wct-src-chev">${abierto?'▼':'▶'}</span>`
@@ -11639,14 +11644,14 @@ const _srcBlockSegments=(resEl,F,zone)=>{
               +`<span class="wct-src-queued" data-qtag="${gi}" style="display:none">✔ en cola</span></div>`;
             { const A=g.extra&&_srcFH(g.maxEnd); if(A && new Date(A.y,A.mo-1,A.d,+A.h,+A.mi).getTime()<Date.now()) h+=`<div class="wct-src-viejo">🕓 Evento <b>terminado ${_srcHaceTxt(g.maxEnd)}</b> · cierres pedidos directo a Waze por el evento</div>`; }   // [v20.7]
             if(abierto) g.subs.forEach((s,si)=>{
-                const ab2=_srcExp.has(`s${gi}_${si}`), nS=s.sids.filter(id=>_srcSel.has(id)).length, w0=s.wins[0], w1=s.wins[s.wins.length-1];
+                const ab2=_srcExp.has(`s${gi}_${si}`), nS=s.sids.filter(id=>stG.has(id)).length, w0=s.wins[0], w1=s.wins[s.wins.length-1];
                 const txt=s.wins.length===1 ? _srcVentTxt(w0.s,w0.e) : `${s.wins.length} ventanas · ${_srcVentTxt(w0.s,w0.e)} … ${_srcFH(w1.e)?_srcFH(w1.e).f.slice(8)+'-'+_SRC_MES[_srcFH(w1.e).mo-1]:''}`;
                 h+=`<div class="wct-src-sg"><div class="wct-src-sg-h" data-tog="s${gi}_${si}" title="${escHtml(s.wins.map(w=>_srcVentTxt(w.s,w.e)).join('\n'))}">`
                   +`<span class="wct-src-chev">${ab2?'▼':'▶'}</span>`
                   +`<input type="checkbox" data-chk="sub" data-g="${gi}" data-s="${si}"${nS===s.sids.length?' checked':''} data-ind="${nS>0&&nS<s.sids.length?1:0}">`
                   +`<span class="wct-src-sg-w">${escHtml(txt)}</span><span class="wct-src-meta">${s.sids.length} seg</span>`
                   +`<span class="wct-src-queued" data-qtag="${gi}_${si}" style="display:none">✔ en cola</span></div>`
-                  +(ab2?`<div class="wct-src-sgbody">${tablaHtml(s.sids)}</div>`:'')+`</div>`;
+                  +(ab2?`<div class="wct-src-sgbody">${tablaHtml(s.sids,gi)}</div>`:'')+`</div>`;
             });
             h+=`</div>`;
         });
@@ -11679,16 +11684,18 @@ const _srcBlockSegments=(resEl,F,zone)=>{
     });
     wrap.addEventListener('change',e=>{
         const i=e.target; if(!i.matches||!i.matches('input[data-chk]')) return;
-        const on=i.checked; let ids=[];
+        const on=i.checked; let ids=[]; const gi=+i.dataset.g;   // [v20.8] las marcas son del evento de la casilla
         if(i.dataset.chk==='seg') ids=[Number(i.dataset.sid)];
-        else if(i.dataset.chk==='sub') ids=grupos[+i.dataset.g].subs[+i.dataset.s].sids;
-        else ids=grupos[+i.dataset.g].subs.flatMap(s=>s.sids);
-        ids.forEach(id=>{ if(on) _srcSel.add(id); else _srcSel.delete(id); });
+        else if(i.dataset.chk==='sub') ids=grupos[gi].subs[+i.dataset.s].sids;
+        else ids=grupos[gi].subs.flatMap(s=>s.sids);
+        const st=_srcSelDe(gi); ids.forEach(id=>{ if(on) st.add(id); else st.delete(id); });
+        _srcSelRecalc();
         build(); _srcSyncMapa();
     });
     bar.addEventListener('click',e=>{
         const a=e.target.closest('button[data-act]'); if(!a) return;
-        if(a.dataset.act==='all') bySegId.forEach((v,sid)=>_srcSel.add(Number(sid))); else _srcSel.clear();
+        if(a.dataset.act==='all') grupos.forEach((g,gi)=>{ const st=_srcSelDe(gi); g.subs.forEach(sb=>sb.sids.forEach(id=>st.add(id))); }); else _srcSelEv=new Map();   // [v20.8]
+        _srcSelRecalc();
         build(); _srcSyncMapa();
     });
     build();
@@ -20659,7 +20666,7 @@ const connectOverlay=ov=>{
         refreshSrcPartnerFilter();
         const res=$id('wct-src-results');if(res)res.innerHTML='';
         // Les cercles décrivent un résultat qui n'existe plus.
-        _srcClearRings(); _srcFoundSegs=null; _srcFoundTurns=null; _srcGrupos=[]; _srcSel=new Set(); _srcDesdeBusqueda=null; try{ _srcActualizarBoton(); }catch(e){}
+        _srcClearRings(); _srcFoundSegs=null; _srcFoundTurns=null; _srcGrupos=[]; _srcSel=new Set(); _srcSelEv=new Map(); _srcDesdeBusqueda=null; try{ _srcActualizarBoton(); }catch(e){}
         // Plus aucun filtre actif : les marqueurs ● doivent s'éteindre.
         refreshSrcFold();
     });
@@ -21937,7 +21944,7 @@ const setLang=pref=>{
     renderTurnBanner();
     // Les résultats de recherche, eux, ne survivent pas au rebuild du DOM : effacer les
     // cercles, sinon ils resteraient sur la carte sans plus rien décrire.
-    _srcClearRings(); _srcFoundSegs=null; _srcFoundTurns=null; _srcGrupos=[]; _srcSel=new Set(); _srcDesdeBusqueda=null; try{ _srcActualizarBoton(); }catch(e){}
+    _srcClearRings(); _srcFoundSegs=null; _srcFoundTurns=null; _srcGrupos=[]; _srcSel=new Set(); _srcSelEv=new Map(); _srcDesdeBusqueda=null; try{ _srcActualizarBoton(); }catch(e){}
     updateFab(); updateCountryInfo();
     renderSidebar();
 };
