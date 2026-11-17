@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.5
+// @version      20.6
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,7 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v20.6: PESTAÑA «BUSCAR». (1) La búsqueda por NOMBRE de evento usa también los nombres que trae la respuesta de Waze (antes, los eventos que no estaban en la lista del SDK salían como código y nunca coincidían). (2) La lista de resultados ya no se va a la derecha (la flecha tenía margen automático). (3) Si el evento buscado está en la lista de Waze pero no hay cierres, lo dice (los terminados hace más de 7 días ya no los entrega Waze).
 // v20.5: VERIFICAR Y COMPLETAR EL TRAMO. Cada tarjeta dice «✔ llega a Guanaco y a Independencia» o «⚠ no llega hasta Puente» (comprueba por nodo que los extremos toquen la calle «desde»/«hasta»). 📍 Ubicar y el ▶ Play completan solos un tramo que quedó corto (misma calle, un solo camino, ≤ 80 m, sin ir contra la calzada); nunca quitan segmentos.
 // v20.4: «IR A LA COMUNA» deja el mapa EXACTAMENTE en las coordenadas de la comuna (antes lo desplazaba para esquivar el panel y, según dónde estuviera el panel, terminaba en otra comuna: Independencia → Providencia).
 // v20.3: MENSAJES REDISEÑADOS (8 cartelitos): franja de color arriba (naranja reforzado en «Estas calles ya están en la cola») y cuerpo ordenado — chips, cajas, pasos —, texto a la izquierda, botón principal destacado y el peligroso aparte en rojo. Los avisos flotantes y las ventanas nativas no cambian.
@@ -1296,6 +1297,7 @@ GM_addStyle(`
 .wct-src-meta { color:var(--wct-text2); font-size:0.9em; white-space:nowrap; }
 .wct-src-sg { border-top:1px solid var(--wct-border); }
 .wct-src-sg-h { display:flex; align-items:center; gap:6px; padding:3px 6px 3px 18px; cursor:pointer; font-size:0.833em; }
+.wct-src-ev-h .wct-src-chev, .wct-src-sg-h .wct-src-chev { margin-inline-start:0; }   /* [v20.6] la flecha de los resultados iba al extremo derecho (la regla de arriba es para los títulos de sección) y arrastraba toda la fila */
 .wct-src-sg-w { font-weight:600; }
 .wct-src-sgbody { padding:0 4px 4px 14px; overflow-x:auto; }
 .wct-src-queued { background:#e8f5e9; color:#2e7d32; border-radius:10px; padding:0 7px; font-size:0.85em; font-weight:700; white-space:nowrap; margin-inline-start:auto; }
@@ -11028,16 +11030,20 @@ const _srcReadFilters=()=>{
 };
 // Cache des noms MTE (lookup SDK coûteux). {name, resolved} ; resolved=false ⇒ MTE non chargé.
 const _srcMteCache=new Map();
+// [v20.6] La lista de eventos del SDK casi nunca está completa: la búsqueda por NOMBRE de evento no coincidía con los que faltaban (salían como código «1.1.450fed15-…»). La respuesta de Waze que trae los cierres TAMBIÉN trae el nombre de cada evento (majorTrafficEvents): se guarda aquí.
+const _srcMteApi=new Map();   // id → nombre
+const _srcGuardarNombres=j=>{ try{ ((j&&j.majorTrafficEvents&&j.majorTrafficEvents.objects)||[]).forEach(e=>{ const nm=e&&e.names&&e.names[0]&&e.names[0].value; if(e&&e.id&&nm) _srcMteApi.set(String(e.id),nm); }); }catch(e){ /* sin nombres */ } };
 const _srcGetMte=id=>{
     if(!id) return {name:'',resolved:true};
-    if(_srcMteCache.has(id)) return _srcMteCache.get(id);
+    const c=_srcMteCache.get(id); if(c&&c.resolved) return c;
     let res={name:id,resolved:false};
     try{
         const ev=(_wme.mte||[]).find(m=>String(m.id)===String(id));
         const nm=ev?.names?.[0]?.value;
         if(nm) res={name:nm,resolved:true};
     }catch(e){}
-    _srcMteCache.set(id,res);
+    if(!res.resolved && _srcMteApi.has(String(id))) res={name:_srcMteApi.get(String(id)),resolved:true};   // [v20.6]
+    if(res.resolved) _srcMteCache.set(id,res);   // lo no resuelto NO se guarda: puede resolverse en la próxima búsqueda
     return res;
 };
 const _srcStatusLabel=s=>{ const l=t('srcStatusLabels'); return l[s]||s||'—'; };
@@ -11158,6 +11164,7 @@ const fetchZoneClosures = async (km) => {
         // une réponse Features. La clé turnClosures existe ; les objets de roadClosures
         // portent aussi un closureType ("SEGMENT"). On couvre les deux hypothèses.
         const tc = Array.isArray(j?.turnClosures?.objects) ? j.turnClosures.objects : [];
+        _srcGuardarNombres(j);   // [v20.6] nombres de los eventos de esta zona
         const tousSeg  = rc.filter(o=>o.closureType!=='TURN').map(_apiToClosure);
         const tousTurn = [...tc, ...rc.filter(o=>o.closureType==='TURN')].map(_apiToClosure);
         return {ok:true, closures:tousSeg, turns:tousTurn};
@@ -11224,6 +11231,16 @@ const _srcBusy=(on,km)=>{
     }
 };
 
+// [v20.6] «Vista actual»: si algún cierre es de un evento cuyo nombre no se conoce, se piden los nombres a Waze para el área de la vista (una sola petición).
+const _srcNombresVista=async()=>{
+    try{
+        const e=_wme.ext; if(!Array.isArray(e)||e.length!==4) return;
+        const faltan=(_fermeturesChargees()||[]).some(c=>c.trafficEventId && !_srcGetMte(c.trafficEventId).resolved);
+        if(!faltan) return;
+        const r=await fetch(`${_featuresPath()}?bbox=${e.map(x=>Number(x).toFixed(6)).join(',')}&language=${_lang}&v=2&apiV2=true&roadClosures=true&zoomLevel=15`,{credentials:'include'});
+        if(r.ok) _srcGuardarNombres(await r.json());
+    }catch(e){ log('recherche, noms des événements : '+e.message); }
+};
 const runSearch=async()=>{
     const resEl=$id('wct-src-results');
     if(!resEl) return;
@@ -11244,6 +11261,7 @@ const runSearch=async()=>{
         // Le filtre Partenaire a pu être bâti avant cette lecture (prod v2.370, 04/10 : « Tous »
         // et « Aucun » seulement) : le reconstruire. Le choix en cours est gardé.
         refreshSrcPartnerFilter();
+        await _srcNombresVista();   // [v20.6]
     }
     // Les nœuds des virages fermés dont les deux segments sont chargés passent dans le cache des
     // virages AVANT le rendu : le bloc Virages y lit l'identifiant et l'angle de chaque virage.
@@ -11276,7 +11294,12 @@ const runSearch=async()=>{
     const nTurn = wantTurn ? _srcBlockTurns(resEl,F,zone)    : 0;
 
     if(!nSeg && !nTurn){
-        resEl.innerHTML=`<p style="color:var(--wct-text2);font-size:0.833em;margin-top:6px">${t('srcNoResults')}</p>`;
+        let extra='';
+        if(F.mteKw){   // [v20.6] el evento está en la lista de Waze pero no hay cierres suyos: decirlo (puede haber terminado hace más de 7 días: Waze ya no los entrega)
+            const nombres=new Set(); (_wme.mte||[]).forEach(m=>{ const n=m?.names?.[0]?.value; if(n && n.toLowerCase().includes(F.mteKw)) nombres.add(n); });
+            if(nombres.size) extra=`<p style="color:var(--wct-orange);font-size:0.833em;margin-top:6px">ℹ️ El evento ${[...nombres].slice(0,3).map(n=>'«'+escHtml(n)+'»').join(', ')} está en tu lista de Waze, pero no hay cierres suyos en esta búsqueda. Si terminó hace más de 7 días, Waze ya no entrega sus cierres a la búsqueda.</p>`;
+        }
+        resEl.innerHTML=`<p style="color:var(--wct-text2);font-size:0.833em;margin-top:6px">${t('srcNoResults')}</p>`+extra;
         return;
     }
     // Rappel de périmètre — il CHANGE selon la zone, donc le texte aussi.
