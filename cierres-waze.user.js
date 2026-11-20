@@ -8,7 +8,7 @@
 // @name:he      Cierres Waze
 // @name:it      Cierres Waze
 // @namespace    http://tampermonkey.net/
-// @version      20.9
+// @version      21.1
 // @updateURL    https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @downloadURL  https://raw.githubusercontent.com/paralepepipedo/cierres-waze-script/main/cierres-waze.user.js
 // @icon         data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDY0IDY0Ij48cmVjdCB4PSIwIiB5PSI0IiB3aWR0aD0iMjMiIGhlaWdodD0iNTYiIGZpbGw9IiMwMDYzQUYiLz48cmVjdCB4PSIyMyIgeT0iNCIgd2lkdGg9IjQxIiBoZWlnaHQ9IjU2IiBmaWxsPSIjRTcyRTM5Ii8+PHRleHQgeD0iMzIiIHk9IjQzIiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzNhMGExMCIgc3Ryb2tlLXdpZHRoPSIxLjgiIHBhaW50LW9yZGVyPSJzdHJva2UiPkdHQjwvdGV4dD48L3N2Zz4=
@@ -110,6 +110,8 @@
 // v17.5: MENSAJE DE «SIN UBICAR»: si el nombre del cierre no existe tal cual en Waze pero hay uno más corto contenido en él (p. ej. «Valentina Leppe» / «Pasaje Valentina»), dice «no existe tal cual (parecida: «Valentina Lepe»)» en vez de «no encontré el cruce». Solo cambia el texto.
 // v17.5: CARTEL DE ENVÍO REDISEÑADO (evento, cifras, horario en un bloque) + AVISO DE PERÍODO: si el cierre abarca varios días con un mismo horario y el Período está en «Continuo», avisa con un gráfico (cada día vs continuo, horas de más) y ofrece «Cambiar a «Cada día»».
 // v17.5: «IGNORAR» un tramo (botón 🚫 a la derecha de las acciones del tramo activo): lo da por trabajado sin segmentos, cuenta como listo y habilita «Enviar a la cola». Se repone con «↩ Reponer». El cartel de envío nombra los tramos ignorados.
+// v21.1: PLAN POR TRAMOS: EL AVISO «QUEDAN FUERA DEL TRAMO / SON DE OTRA CALLE» SE REVISA SOLO. Al pulsar «Tomar selección» con segmentos fuera del tramo salía un aviso con «Quitar esos y tomar el resto» y «Tomar igual». Si el analista sacaba a mano esos segmentos DESPUÉS del aviso, el aviso seguía mostrando lo mismo y los dos botones hacían exactamente lo mismo (no había nada que quitar). Ahora el aviso se calcula contra la selección de AHORA: si ya no hay segmentos fuera, desaparece y queda una línea verde «✔ Ya no hay segmentos fuera del tramo»; si todavía hay, los botones traen los números («Quitar esos 3 y tomar 2» / «Tomar los 5 igual»).
+// v21.0: PLAN POR TRAMOS: NOMBRES POR REVISAR. Un nombre mal escrito en el plan («Avda. Idependencia») hacía que 📍 Ubicar dijera «no están cargados» (falso) sin decir cuál de las tres calles fallaba. Ahora: (1) una franja naranja arriba del plan agrupa los nombres que NO existen en el mapa pero se parecen (≥ 80 %, Damerau-Levenshtein: dos letras intercambiadas cuentan como un error) a una calle que SÍ existe y que CRUZA la calle del tramo; un mismo error en varios tramos es UNA fila; «Usar» lo corrige en todos los tramos que lo dicen y «Usar las N sugerencias» corrige todas. (2) El cuadro ✏️ trae la sugerencia escrita (verde), las otras candidatas y la casilla «corregir también en los otros tramos». (3) La calle corregida se ve en verde con un ↺ chico que la deshace. (4) 📍 Ubicar dice QUÉ calle no encuentra y cuál podría ser. (5) «¿Quisiste decir?» del ▶ Play también usa el parecido de letras. Nunca se corrige solo.
 // v20.9: PLAN POR TRAMOS: EL NOMBRE EXACTO TIENE PRIORIDAD. La comparación de nombres acepta que uno esté CONTENIDO en el otro (pensada para «Valentina Leppe» / «Pasaje Valentina»). MEDIDO en Huechuraba: «Av. Huechuraba» contaba como «Santa Marta de Huechuraba» (66 cruces falsos: el tramo se ubicaba 460 m más al sur, con 4 segmentos que no eran) y «Interior Terminal Los Libertadores» contaba como «Av. Los Libertadores» (15 de 38 segmentos eran del terminal). Ahora hay NIVELES, sin quitar nada que antes se encontraba: (1) CRUCES: se prefieren los nodos donde el nombre es EXACTO (o exacto + orientación, «… Oriente») en la calle y en la calle «desde»/«hasta»; si no hay de esos, los que tienen uno exacto; y solo si no hay ninguno, la comparación por contención de siempre. (2) SEGMENTOS DE LA CALLE: dentro del tramo, si hay segmentos de nombre exacto, se descartan los que solo la CONTIENEN en su nombre; si no hay exactos, se dejan todos como antes. (3) VERIFICACIÓN (línea ✔/⚠): el contacto con la calle «desde»/«hasta» exige nombre exacto cuando existe un cruce exacto; si no, contención. Probado contra la versión anterior con 318 tramos reales y generados de 4 zonas.
 // v20.8: PESTAÑA «BUSCAR»: LAS CASILLAS SON DE CADA EVENTO. Antes la marca era por segmento: si dos eventos compartían calles (típico de un mismo estadio), al marcar uno el otro quedaba con la línea blanca (marca a medias) y «Enviar a cierre» se negaba («Hay segmentos de 2 eventos»). Ahora cada evento guarda sus propias marcas (_srcSelEv: grupo → segmentos); el mapa sigue mostrando la unión de lo marcado.
 // v20.7: PESTAÑA «BUSCAR»: CIERRES DE EVENTOS YA TERMINADOS. Waze solo entrega por zona/vista los cierres terminados hace menos de 7 días; WME, al marcar «Mostrar cierres pasados» en un evento, pide /v1/Features/Closures?includePastClosures=true&majorTrafficEventId=<id>&view=CLOSURE_VIEW_FULL (medido el 17/11/2026: entrega cierres de hace meses, con segmentos, calles y fechas). Ahora, si se escribe un evento en «Evento (MTE)» y la casilla «Traer también los cierres de eventos ya terminados» está marcada, el script ubica el evento en la lista de Waze y pide así sus cierres. «Enviar a cierre» lleva el mapa a la zona si los segmentos no están cargados.
@@ -1339,6 +1341,22 @@ GM_addStyle(`
 .wct-tj-sug { display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin:2px 0 4px 52px; color:var(--wct-text2); }
 .wct-tj-chip { background:#fff; border:1px solid #1565c0; color:#1565c0; border-radius:50px; padding:2px 10px; font:inherit; font-weight:600; cursor:pointer; }
 .wct-tj-chip:hover { background:#e3f2fd; }
+/* [v21.0] nombres por revisar */
+.wct-nom { background:#fff3e0; border:1px solid #ffb74d; color:#5d4037; border-radius:var(--wct-radius); padding:5px 8px; margin:4px 0; }
+.wct-nom-h { display:flex; align-items:center; gap:5px; color:#8a4b00; margin-bottom:3px; } .wct-nom-mut { color:var(--wct-text2); font-weight:400; }
+.wct-nom-lista { max-height:150px; overflow-y:auto; }
+.wct-nom-r { display:flex; align-items:center; gap:5px; padding:2px 0; border-top:1px dashed #ffcc80; white-space:nowrap; font-size:.95em; }
+.wct-nom-r .mal { color:#b71c1c; text-decoration:line-through; max-width:105px; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
+.wct-nom-r .bien { color:#1b5e20; font-weight:700; max-width:100px; overflow:hidden; text-overflow:ellipsis; }
+.wct-nom-r .pc { background:#e3f2fd; color:#0d47a1; border-radius:999px; padding:0 6px; font-weight:700; }
+.wct-nom-r .tr { margin-left:auto; color:#8d6e63; } .wct-nom-r .nada { color:#8d6e63; font-style:italic; }
+.wct-nom-r .wct-btn { padding:1px 9px; font-size:.92em; }
+.wct-nom-link { background:none; border:0; color:#8a4b00; cursor:pointer; font:inherit; padding:0; opacity:.8; }
+.wct-nom-mas { display:block; width:100%; background:none; border:0; border-top:1px dashed #ffcc80; color:#8a4b00; cursor:pointer; font:inherit; padding:2px 0; }
+.wct-nom-pie { display:flex; align-items:center; gap:8px; border-top:1px dashed #ffcc80; padding-top:5px; margin-top:2px; }
+.wct-tj-dud { color:#b71c1c; font-weight:600; } .wct-tj-ok { color:#2e7d32; font-weight:700; border-bottom:2px solid #66bb6a; }
+.wct-tj-und { background:none; border:0; color:#78909c; cursor:pointer; font:inherit; padding:0 3px; } .wct-tj-und:hover { color:#1565c0; }
+.wct-tj-campo input.sugerido { border:2px solid #2e7d32; color:#1b5e20; font-weight:700; }
 .wct-avance { position:sticky; top:0; z-index:3; margin:4px 0 6px; padding:8px 10px; border-radius:var(--wct-radius); background:#0d47a1; color:#fff; box-shadow:0 3px 10px rgba(0,0,0,.25); }
 .wct-avance-f { display:flex; align-items:center; gap:10px; } .wct-avance-t { flex:1; font-weight:700; font-size:1.08em; } .wct-avance-s { font-variant-numeric:tabular-nums; opacity:.9; }
 .wct-avance-sub { margin-top:3px; opacity:.92; overflow-wrap:anywhere; }
@@ -22889,6 +22907,167 @@ const _planPintar = () => {
 
 // ── panel ──
 const _planSelN = () => { try { const s = getSelection(); return s.objectType === 'segment' ? s.ids.length : 0; } catch (e) { return 0; } };
+// ═══════════════════════════════════════════════════════════════════════════
+//  [v21.0] NOMBRES POR REVISAR
+//  Un nombre de calle mal escrito en el plan («Avda. Idependencia») hacía que Ubicar dijera «no están cargados» sin decir cuál calle fallaba. Aquí se detectan los nombres que NO existen en el mapa pero SÍ se parecen a una calle que existe,
+//  se agrupan por texto (un mismo error en varios tramos = una sola fila), se sugiere la calle y se corrige en todos los tramos con un clic. Nunca se corrige solo: la elección es del analista y se deshace con ↺.
+//  · Parecido de letras: Damerau-Levenshtein (una letra cambiada, de más, de menos, o DOS letras intercambiadas = 1 error) sobre el nombre normalizado. Umbral 80 %. Los números tienen que ser iguales («Calle 5» no es «Calle 6») y se piden 5 letras o más.
+//  · Entre las candidatas gana la que CRUZA la calle del tramo (p. ej. «Av. Independencia» cruza «Santa Laura»; «Independencia» o «Pasaje Independencia» no). Con el mapa cargado (sin escaneo) SOLO se sugiere una calle que cruce: sin esa prueba no se avisa para no dar falsas alarmas.
+// ═══════════════════════════════════════════════════════════════════════════
+var _planNomIgn = new Set(), _planNomAbierto = false, _planNomC = null, _planCtxC = null;
+const _PLAN_PARECIDO_MIN = 0.8;
+const _planDL = (a, b) => {
+    const n = a.length, m = b.length; if (!n) return m; if (!m) return n;
+    let p2 = null, p1 = Array.from({ length: m + 1 }, (_, j) => j);
+    for (let i = 1; i <= n; i++) {
+        const c = [i];
+        for (let j = 1; j <= m; j++) {
+            let v = Math.min(p1[j] + 1, c[j - 1] + 1, p1[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+            if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, p2[j - 2] + 1);
+            c[j] = v;
+        }
+        p2 = p1; p1 = c;
+    }
+    return p1[m];
+};
+// parecido (0…1) entre dos nombres YA normalizados; 0 si son iguales (no hay nada que sugerir), muy cortos, de largo muy distinto o con números distintos
+const _planParecidoN = (x, y) => {
+    if (!x || !y || x === y) return 0;
+    const m = Math.max(x.length, y.length);
+    if (m < 5 || Math.abs(x.length - y.length) / m > 0.2) return 0;
+    if (x.replace(/\D/g, '') !== y.replace(/\D/g, '')) return 0;
+    return 1 - _planDL(x, y) / m;
+};
+// para COMPARAR parecido se quitan también las abreviaturas que _planNorm no conoce («Avda.», «Pje.»…); el resto del plan sigue usando _planNorm
+const _planNormF = s => _planNorm(String(s == null ? '' : s).replace(/\b(avda|avd|avdas|pje|psj|cll|cno)\b\.?/gi, ' '));
+const _planPrefijo = s => /^\s*(avenida|avda|av)\b\.?/i.test(s) ? 'av' : /^\s*(pasaje|psje|psj)\b\.?/i.test(s) ? 'pje' : /^\s*calle\b/i.test(s) ? 'calle' : /^\s*camino\b/i.test(s) ? 'camino' : '';
+// contexto de una pasada: nombres de la fuente (escaneo o modelo) ya normalizados · se guarda 4 s
+const _planCtx = () => {
+    const S = _pfSegs();
+    if (_planCtxC && _planCtxC.S === S && _planCtxC.n === S.size && Date.now() - _planCtxC.t < 4000) return _planCtxC;
+    const porSeg = new Map(), vistos = new Map();
+    S.forEach((sg, id) => { const L = []; _pfNombres(id).forEach(n => { if (!n || n === 'No name') return; const x = _planNorm(n); if (!x) return; L.push({ n, x }); if (!vistos.has(n)) vistos.set(n, x); }); porSeg.set(Number(id), L); });
+    const lista = [...vistos].map(([n, x]) => ({ n, x, xf: _planNormF(n) }));
+    _planCtxC = { S, n: S.size, t: Date.now(), porSeg, lista, xs: new Set(lista.map(o => o.x)), memoE: new Map(), memoC: new Map() };
+    return _planCtxC;
+};
+// ¿existe una calle con ese nombre? (igual que lo entiende el resto del plan: igual o contenido)
+const _planExiste = (texto, ctx) => {
+    const q = _planNorm(texto); if (!q) return true;
+    if (ctx.memoE.has(q)) return ctx.memoE.get(q);
+    const r = ctx.xs.has(q) || ctx.lista.some(o => _planCoincide(o.x, q));
+    ctx.memoE.set(q, r); return r;
+};
+// nombres (tal como los escribe Waze) de las calles que comparten un nodo con la calle «ancla»
+const _planCrucesDe = (ancla, ctx) => {
+    const aN = _planNorm(ancla); if (!aN) return { d: new Set(), x: new Set() };
+    if (ctx.memoC.has(aN)) return ctx.memoC.get(aN);
+    const d = new Set(), x = new Set(), idx = _planIdxNodos();
+    // d = nombres (tal cual los escribe Waze) de las calles que comparten un nodo CON la calle «ancla»
+    idx.forEach(ids => {
+        if (!ids.some(id => (ctx.porSeg.get(id) || []).some(o => _planCoincide(o.x, aN)))) return;
+        ids.forEach(id => (ctx.porSeg.get(id) || []).forEach(o => { if (!_planCoincide(o.x, aN)) d.add(o.n); }));
+    });
+    // x = nombres normalizados de las calles que se cruzan en el MISMO cruce (nodos unidos por conectores sin nombre ≤ 40 m: rotondas, calzadas dobles), como ubica el resto del plan
+    try { const nn = (ctx.nodos = ctx.nodos || _planNodos()).nom; nn.forEach(set => { if ([...set].some(s => _planCoincide(s, aN))) set.forEach(s => { if (!_planCoincide(s, aN)) x.add(s); }); }); } catch (e) { /* sin cruces por conector */ }
+    const res = { d, x }; ctx.memoC.set(aN, res); return res;
+};
+// hasta 3 candidatas {nombre, pct, cruza}. estricto = solo las que cruzan alguna de las calles «ancla»
+const _planCandidatos = (texto, anclas, estricto, ctx) => {
+    const q = _planNormF(texto); if (!q) return [];
+    const cd = new Set(), cx = new Set(); (anclas || []).forEach(a => { if (a && !_planEsAbierto(a) && !_planEsDistancia(a)) { const r = _planCrucesDe(a, ctx); r.d.forEach(n => cd.add(n)); r.x.forEach(n => cx.add(n)); } });
+    const xDir = new Set(); ctx.lista.forEach(o => { if (cd.has(o.n)) xDir.add(o.x); });   // si una variante («Av. X») cruza directo, las otras con el mismo nombre normalizado («X», «Pasaje X») no se dan por cruzadas
+    const pref = _planPrefijo(texto), out = [];
+    ctx.lista.forEach(o => { const p = _planParecidoN(q, o.xf); if (p < _PLAN_PARECIDO_MIN) return; const c = cd.has(o.n) || (cx.has(o.x) && !xDir.has(o.x)); if (estricto && !c) return; out.push({ nombre: o.n, pct: Math.round(p * 100), cruza: c, pref: _planPrefijo(o.n) === pref }); });
+    out.sort((a, b) => b.pct - a.pct || (b.cruza - a.cruza) || (b.pref - a.pref) || a.nombre.length - b.nombre.length || a.nombre.localeCompare(b.nombre, 'es'));
+    return out.slice(0, 3);
+};
+// Grupos de nombres por revisar: [{ key, texto, campos:[{tid,k}], sug:[{nombre,pct,cruza}] }] · key = nombre normalizado (un mismo error en varios tramos = un grupo)
+const _planGruposNombres = () => {
+    const vacio = { grupos: [], scan: false };
+    if (!_plan) return vacio;
+    const scan = !!(_planEscaneo && Date.now() - _planEscaneo.ts < 10 * 60000);
+    const firma = _plan.p.tramos.map(t => [t.id, t.calle, t.desde, t.hasta, t.libre ? 1 : 0, _planListo(t) ? 1 : 0, _planIgnorado(t) ? 1 : 0].join('|')).join('~');
+    const ahora = Date.now();
+    if (_planNomC && _planNomC.firma === firma && _planNomC.scanTs === (scan ? _planEscaneo.ts : 0) && ahora - _planNomC.t < (scan ? 60000 : 4000)) return _planNomC.v;
+    const prev = _planFuente; _planFuente = scan ? _planEscaneo.fuente : null;
+    const v = { grupos: [], scan };
+    try {
+        const ctx = _planCtx(), mapa = new Map();
+        if (ctx.lista.length) _plan.p.tramos.forEach(t => {
+            if (t.libre || _planListo(t) || _planIgnorado(t)) return;
+            ['calle', 'desde', 'hasta'].forEach(k => {
+                const txt = String(t[k] || '').trim(); if (!txt || _planEsAbierto(txt) || _planEsDistancia(txt)) return;
+                const q = _planNormF(txt); if (!q || _planExiste(txt, ctx)) return;
+                const ancla = k === 'calle' ? [t.desde, t.hasta] : [t.calle];
+                if (!mapa.has(q)) mapa.set(q, { key: q, texto: txt, campos: [], anclas: new Set() });
+                const g = mapa.get(q); g.campos.push({ tid: t.id, k }); ancla.forEach(a => g.anclas.add(a));
+            });
+        });
+        mapa.forEach(g => {
+            g.sug = _planCandidatos(g.texto, [...g.anclas], !scan, ctx);   // con el mapa cargado se exige que la candidata CRUCE; con escaneo basta el parecido
+            if (g.sug.length || scan) v.grupos.push(g);
+        });
+        v.grupos.sort((a, b) => Math.min(...a.campos.map(c => _planNum(_plan.p.tramos.find(t => t.id === c.tid)))) - Math.min(...b.campos.map(c => _planNum(_plan.p.tramos.find(t => t.id === c.tid)))));
+    } catch (e) { log('plan nombres por revisar: ' + e.message); }
+    finally { _planFuente = prev; }
+    _planNomC = { firma, scanTs: scan ? _planEscaneo.ts : 0, t: ahora, v };
+    return v;
+};
+const _planGruposVisibles = () => _planGruposNombres().grupos.filter(g => !_planNomIgn.has(g.key));
+// campo → grupo de los nombres dudosos de ese tramo
+const _planDudosoMap = tid => { const m = new Map(); try { _planGruposVisibles().forEach(g => g.campos.forEach(c => { if (c.tid === tid) m.set(c.k, g); })); } catch (e) { /* sin marcas */ } return m; };
+const _planNumsDe = g => [...new Set(g.campos.map(c => _planNum(_plan.p.tramos.find(t => t.id === c.tid))))].sort((a, b) => a - b);
+// Corrige el nombre (por su texto normalizado) en TODOS los tramos que lo dicen. «salvo»: un tramo que ya se corrigió aparte.
+const _planAplicarNombre = (key, nuevo, salvo) => {
+    if (!_plan) return 0;
+    let n = 0;
+    _plan.p.tramos.forEach(t => {
+        if (salvo != null && t.id === salvo) return;
+        const v = { calle: t.calle, desde: t.desde, hasta: t.hasta }; let ch = false;
+        ['calle', 'desde', 'hasta'].forEach(k => { if (_planNormF(t[k]) === key) { v[k] = nuevo; ch = true; } });
+        if (ch) { _planEditarNombres(t.id, v, true); n++; }
+    });
+    _planNomC = null;
+    return n;
+};
+const _planNomHtml = () => {
+    if (!_plan || _planPlayCorre) return '';
+    const gs = _planGruposVisibles(); if (!gs.length) return '';
+    const nT = new Set(gs.flatMap(g => g.campos.map(c => c.tid))).size;
+    const trTxt = g => { const n = _planNumsDe(g); return (n.length === 1 ? 'tramo ' : 'tramos ') + n.join('·'); };
+    const fila = g => {
+        const s = g.sug[0];
+        return `<div class="wct-nom-r"><span class="mal" title="${escHtml(g.texto)}">${escHtml(g.texto)}</span><span style="color:#8d6e63">→</span>`
+            + (s ? `<span class="bien" title="${escHtml(s.nombre)}${s.cruza ? ' · cruza la calle del tramo' : ''}">${escHtml(s.nombre)}</span><span class="pc">${s.pct}%</span>` : '<span class="nada">sin calle parecida</span>')
+            + `<span class="tr">${trTxt(g)}</span>`
+            + (s ? `<button type="button" class="wct-btn wct-btn-primary wct-btn-sm" data-plan-nomusar="${escHtml(g.key)}" title="Corrige «${escHtml(g.texto)}» por «${escHtml(s.nombre)}» en ${g.campos.length === 1 ? 'el tramo' : 'los ' + _planNumsDe(g).length + ' tramos'} que lo dicen (solo en tu extensión; se deshace con ↺)">Usar</button>`
+                   : `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-ed="${g.campos[0].tid}" title="Escribir el nombre a mano">✏️</button>`) + `</div>`;
+    };
+    const mas = gs.length > 3, vis = (mas && !_planNomAbierto) ? gs.slice(0, 3) : gs, conSug = gs.filter(g => g.sug.length).length;
+    return `<div class="wct-nom"><div class="wct-nom-h"><b>⚠ ${gs.length} ${gs.length === 1 ? 'nombre por revisar' : 'nombres por revisar'}</b>${gs.length > 1 || nT > 1 ? `<span class="wct-nom-mut">· afectan ${nT} ${nT === 1 ? 'tramo' : 'tramos'}</span>` : ''}<span style="flex:1"></span><button type="button" class="wct-nom-link" data-plan-nomign="1" title="Ocultar este aviso (hasta cargar otro cierre)">Ignorar</button></div>`
+        + `<div class="wct-nom-lista">${vis.map(fila).join('')}</div>`
+        + (mas ? `<button type="button" class="wct-nom-mas" data-plan-nommas="1">${_planNomAbierto ? 'Ocultar ▴' : '+ ' + (gs.length - 3) + ' más ▾'}</button>` : '')
+        + (conSug >= 2 ? `<div class="wct-nom-pie"><button type="button" class="wct-btn wct-btn-primary wct-btn-sm" data-plan-nomtodas="1" title="Corrige cada nombre por su primera sugerencia (solo en tu extensión; cada tramo se deshace con ↺)">Usar las ${conSug} sugerencias</button>${conSug < gs.length ? `<span class="wct-nom-mut">Las demás no tienen calle parecida: se escriben a mano (✏️).</span>` : ''}</div>` : '')
+        + `</div>`;
+};
+// Para el mensaje de «📍 Ubicar» cuando no se pudo ubicar el tramo: dice QUÉ calle no encuentra (y cuál podría ser) en vez de «no están cargados»
+const _planDiagnosticoNombres = (t, loc) => {
+    try {
+        const prev = _planFuente; _planFuente = null;
+        try {
+            const ctx = _planCtx(), malos = [];
+            ['calle', 'desde', 'hasta'].forEach(k => { const x = String(t[k] || '').trim(); if (!x || _planEsAbierto(x) || _planEsDistancia(x)) return; if (!_planExiste(x, ctx)) malos.push(k); });
+            if (malos.length) {
+                const partes = malos.map(k => { const c = _planCandidatos(t[k], k === 'calle' ? [t.desde, t.hasta] : [t.calle], false, ctx); return '«' + t[k] + '»' + (c.length ? ' (¿será «' + c[0].nombre + '»? ' + c[0].pct + '%)' : ''); });
+                return `📍 ${_planTramoTxt(t)}: no encuentro ${partes.join(' ni ')} en el mapa. Corrígelo con ✏️.`;
+            }
+            if (loc && (!loc.nA || !loc.nB)) { const f = []; if (!loc.nA) f.push(t.desde); if (!loc.nB) f.push(t.hasta); return `📍 ${_planTramoTxt(t)}: las calles existen, pero no encuentro el cruce con ${f.map(x => '«' + x + '»').join(' ni ')}. Revisa los nombres con ✏️.`; }
+        } finally { _planFuente = prev; }
+    } catch (e) { /* sin diagnóstico: se usa el mensaje de siempre */ }
+    return '';
+};
+
 const _planRender = (forzar) => {
     const host = $id('wct-plan'); if (!host) return;
     _planEscuchas();
@@ -22914,6 +23093,7 @@ const _planRender = (forzar) => {
     const ventAbierta = v => { if (v.id in _planAbiertas) return !!_planAbiertas[v.id]; return v.id === (sig ? sig.ventana : (ventActual && ventActual.id)); };
     let h = `<span class="wct-evento-paso">${p.multi === false ? 'MÉTODO 2 · POR TRAMOS' : 'PLAN DE CARGA · ' + p.ventanas.length + ' VENTANAS'} · ${escHtml(c.exp ? 'E' + c.exp : '')}</span>`;
     if (_planPlayCorre && _planPlayInfo) h += `<div class="wct-avance"><div class="wct-avance-f"><span class="wct-rueda"></span><span class="wct-avance-t">${escHtml(_planPlayInfo.tit)}</span><span class="wct-avance-s" data-plan-seg>${Math.round((Date.now() - _planPlayT0) / 1000)} s</span><button type="button" class="wct-btn wct-btn-sm" style="background:#c62828;color:#fff" data-plan-playstop="1" title="Corta el Play después del paso en curso">⏸ Detener</button></div>${_planPlayInfo.sub ? `<div class="wct-avance-sub">${escHtml(_planPlayInfo.sub)}</div>` : ''}<div class="wct-avance-barra"><i style="width:${Math.max(3, Math.min(100, Math.round(_planPlayInfo.pct || 0)))}%"></i></div></div>`;   // [v17.5]
+    h += _planNomHtml();   // [v21.0] nombres por revisar
     if (!_cwBloqueado) h += `<div class="wct-plan-msg">${_planMsg || (sig
         ? `Siguiente: <b>tramo ${num(sig)} · ${escHtml(_planTramoTxt(sig))}</b> (${escHtml(sig.desde)} → ${escHtml(sig.hasta)}${_planUnSentido(sig) ? ' · calzada ' + escHtml(String(sig.calzada).toLowerCase()) : ''}). Pulsa 📍 Ubicar (deja el tramo seleccionado), corrige la selección si hace falta y pulsa «Tomar selección».`
         : (ventActual ? `✔ Tramos de <b>${ventActual.id}</b> listos. Pulsa «📥 Enviar ${ventActual.id} a la cola»: después sigue la siguiente ventana.` : '✔ Todas las ventanas están en la cola: ya puedes Aplicar.'))}</div>`;
@@ -22927,14 +23107,16 @@ const _planRender = (forzar) => {
             const d = _plan.hechos[t.id], act = sig && sig.id === t.id, listo = _planListo(t);
             const f = _planPlayFallos.find(x => x.tid === t.id);
             // [v17.5] TARJETA POR TRAMO: nombre + estado (a la derecha) · desde → hasta · motivo · botones. El ✏️ abre el formulario justo debajo del tramo.
+            const nomD = _planDudosoMap(t.id), colN = (k, txt) => nomD.has(k) ? `<span class="wct-tj-dud">${escHtml(txt)}</span>` : ((t.orig && String(t.orig[k] || '') !== String(t[k] || '')) ? `<span class="wct-tj-ok">${escHtml(txt)}</span>` : escHtml(txt));   // [v21.0]
             let ins;
             if (listo) ins = d ? `<span class="wct-ins ok">✔ ${d.ids.length} segmento(s)</span>` : (_planIgnorado(t) ? '<span class="wct-ins cub">🚫 ignorado</span>' : _planCubierto(t) ? `<span class="wct-ins ok">✔ cubierto por el tramo ${_planNum(_plan.p.tramos.find(x => x.id === _plan.cubre[t.id]))}</span>` : '<span class="wct-ins ok">✔ ya cargado</span>');
             else if (f) ins = f.estado === 'manual' ? '<span class="wct-ins man">✋ a mano</span>' : f.estado === 'cubierto' ? '<span class="wct-ins cub">↺ cubierto</span>' : /^falta confirmar/.test(f.motivo) ? '<span class="wct-ins man">⚠ horario</span>' : '<span class="wct-ins no">✖ sin ubicar</span>';
             else if (t.asumido && !_plan.confirm[t.id]) ins = '<span class="wct-ins man">⚠ horario asumido</span>';
+            else if (nomD.size) ins = '<span class="wct-ins man" title="Hay un nombre que no se encuentra en el mapa: mira la franja naranja de arriba">⚠ nombre</span>';   // [v21.0]
             else ins = act ? '<span class="wct-ins pen">▶ ahora</span>' : '<span class="wct-ins pen">⏳ pendiente</span>';
             const ojo = d ? `<button type="button" class="wct-sw${_planOcultos.has(t.id) ? '' : ' on'}" style="--c:${_planColor(t.ventana)}" role="switch" aria-checked="${_planOcultos.has(t.id) ? 'false' : 'true'}" data-plan-eye="${t.id}" title="${_planOcultos.has(t.id) ? 'Mostrar' : 'Ocultar'} el dibujo de este tramo en el mapa"></button>` : '';
-            const ruta = `${escHtml(t.desde)} → ${escHtml(t.hasta)}${_planUnSentido(t) ? ' · <b>' + escHtml(_planCalzadaTxt(t)) + '</b>' : (t.calzada ? ' · ' + escHtml(t.calzada) : '')}${t.orig ? ` <span class="wct-tj-corr" title="Nombres corregidos en la extensión. La web dice: ${escHtml(t.orig.calle)}, ${escHtml(t.orig.desde)} → ${escHtml(t.orig.hasta)}">✏️ corregido</span>` : ''}`;
-            h += `<div class="wct-plan-t wct-tj${listo ? ' ok' : ''}${act ? ' act' : ''}"><div class="wct-plan-n">${_planIgnorado(t) ? '–' : listo ? '✔' : num(t)}</div><div class="wct-plan-d"><div class="wct-tj-l1"><span class="wct-tj-calle">${escHtml(_planTramoTxt(t))}</span>${ins}${ojo}</div><div class="wct-tj-ruta">${ruta}</div>${d ? _planVerifHtml(t, d.ids) : ''}`;
+            const ruta = `${colN('desde', t.desde)} → ${colN('hasta', t.hasta)}${_planUnSentido(t) ? ' · <b>' + escHtml(_planCalzadaTxt(t)) + '</b>' : (t.calzada ? ' · ' + escHtml(t.calzada) : '')}${t.orig ? ` <button type="button" class="wct-tj-und" data-plan-edreset="${t.id}" title="Deshacer: vuelve a lo que dice la web — ${escHtml(t.orig.calle)}, ${escHtml(t.orig.desde)} → ${escHtml(t.orig.hasta)}">↺</button>` : ''}`;   // [v21.0] lo corregido se ve en verde
+            h += `<div class="wct-plan-t wct-tj${listo ? ' ok' : ''}${act ? ' act' : ''}"><div class="wct-plan-n">${_planIgnorado(t) ? '–' : listo ? '✔' : num(t)}</div><div class="wct-plan-d"><div class="wct-tj-l1"><span class="wct-tj-calle">${colN('calle', t.calle)}${t.altura ? ' ' + escHtml(t.altura) : ''}</span>${ins}${ojo}</div><div class="wct-tj-ruta">${ruta}</div>${d ? _planVerifHtml(t, d.ids) : ''}`;
             if (f && !listo) h += `<div class="wct-tj-mot ${f.estado}">${escHtml(f.motivo)}</div>`;
             if (listo && d && _planEditando !== t.id) h += `<div class="wct-plan-acc">${_planEdicionBloqueada(v.id) ? '<span class="wct-tj-ruta">ya aplicado</span>' : `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-edit="${t.id}" title="Vuelve a poner sus segmentos en la selección del mapa: sacas los que sobran con un clic, agregas con Shift + clic, y lo tomas otra vez${enCola ? ' (la cola se actualiza sola)' : ''}">✎ Editar</button>`}${(enCola || _planEdicionBloqueada(v.id)) ? '' : `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-undo="${t.id}" title="Soltar este tramo y volver a elegirlo desde cero">↩ Soltar</button>`}</div>`;
             else if (listo && !d && _planIgnorado(t)) h += `<div class="wct-tj-ruta" style="color:#546e7a">Ignorado: este tramo no se carga en la cola.</div><div class="wct-plan-acc">${_planEdicionBloqueada(v.id) ? '<span class="wct-tj-ruta">ya aplicado</span>' : `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-ignsoltar="${t.id}" title="Vuelve a dejarlo pendiente">↩ Reponer</button>`}</div>`;
@@ -22944,11 +23126,23 @@ const _planRender = (forzar) => {
                 if (t.asumido) h += `<div class="wct-plan-w">⚠️ La ficha no trae horario para este tramo: se asumió <b>${v.id}</b> (${escHtml(_planVentTxt(v))}). <label><input type="checkbox" data-plan-confirm="${t.id}"${_plan.confirm[t.id] ? ' checked' : ''}> Confirmo que corresponde</label></div>`;
                 if (act && _planUnSentido(t)) { const r = _planRumboCalzada(t.calzada); h += `<div class="wct-plan-w">El cierre dice <b>${escHtml(_planCalzadaTxt(t))}</b>${t.nota ? ' (' + escHtml(t.nota) + ')' : ''}: ${r ? `se toman solo los segmentos que van hacia el <b>${r.hacia}</b>; los de la otra calzada se quitan solos.` : 'selecciona <b>solo los segmentos de esa calzada</b>.'} Los de doble sentido no se pueden separar.</div>`; }
                 if (_planWarn && _planWarn.tid === t.id) {
-                    h += `<div class="${_planWarn.dura ? 'wct-plan-e' : 'wct-plan-w'}">${_planWarn.msgs.map(m => '• ' + escHtml(m)).join('<br>')}`;
-                    if (_planWarn.quitar) h += `<div class="wct-plan-acc"><button type="button" class="wct-btn wct-btn-sm" id="wct-plan-wquitar">Quitar esos y tomar el resto</button><button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" id="wct-plan-wigual">Tomar igual</button><button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" id="wct-plan-wcancel">Cancelar</button></div>`;
+                    // [v21.1] «quedan fuera / son de otra calle» se revisa contra la selección de AHORA: si el analista ya los sacó, el aviso desaparece
+                    let wMsgs = _planWarn.msgs, wQ = null;
+                    if (_planWarn.quitar && _planWarn.malos) {
+                        const gs = getSelection(), sel = (gs.objectType === 'segment' ? gs.ids : []).map(Number);
+                        const ajA = (_planWarn.ajenos || []).filter(id => sel.includes(Number(id))), fuA = (_planWarn.fuera || []).filter(id => sel.includes(Number(id)));
+                        wQ = { n: ajA.length + fuA.length, sel: sel.length }; wMsgs = [];
+                        if (ajA.length) wMsgs.push(`${ajA.length} segmento(s) son de otra calle: ${[...new Set(ajA.map(id => getSegName(id)))].join(', ')}. El tramo es «${_planTramoTxt(t)}».`);
+                        if (fuA.length) wMsgs.push(`${fuA.length} segmento(s) quedan fuera del tramo (entre ${t.desde} y ${t.hasta}).`);
+                    }
+                    if (wQ && !wQ.n) { if (wQ.sel) h += `<div class="wct-plan-msg" style="background:#e8f5e9;border-color:#a5d6a7;color:#1b5e20">✔ Ya no hay segmentos fuera del tramo. Pulsa «Tomar selección (${wQ.sel})».</div>`; }
+                    else {
+                    h += `<div class="${_planWarn.dura ? 'wct-plan-e' : 'wct-plan-w'}">${wMsgs.map(m => '• ' + escHtml(m)).join('<br>')}`;
+                    if (wQ) h += `<div class="wct-plan-acc"><button type="button" class="wct-btn wct-btn-sm" id="wct-plan-wquitar" title="Saca de la selección los ${wQ.n} que están fuera del tramo y toma los demás">Quitar esos ${wQ.n} y tomar ${Math.max(0, wQ.sel - wQ.n)}</button><button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" id="wct-plan-wigual" title="Toma toda la selección, incluidos los ${wQ.n} que están fuera del tramo">Tomar los ${wQ.sel} igual</button><button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" id="wct-plan-wcancel">Cancelar</button></div>`;
                     else if (_planWarn.soloIgual) h += `<div class="wct-plan-acc"><button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" id="wct-plan-wigual">Tomar igual</button><button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" id="wct-plan-wcancel">Cancelar</button></div>`;
                     if (_planWarn.cubrir != null) { const ou = p.tramos.find(x => x.id === _planWarn.cubrir); if (ou) h += `<div class="wct-plan-acc"><button type="button" class="wct-btn wct-btn-sm" data-plan-cubrir="${t.id}" data-por="${ou.id}" title="Es el mismo tramo que el ${num(ou)} (al revés): queda como listo sin segmentos propios">✔ Marcar como cubierto por el tramo ${num(ou)}</button></div>`; }
                     h += `</div>`;
+                    }
                 }
                 if (_planEdTid === t.id) h += _planFormNombres(t);
                 else if (act) {
@@ -23001,7 +23195,7 @@ const _planRedibujar = (forzar) => { try { _planRender(forzar); } catch (e) { lo
 const _planCargarCierre = c => {
     if (c && c.plan && _plan && _plan.c.id === c.id && Array.isArray(c.plan.ventanas) && c.plan.ventanas.length >= 1) { _plan.c = c; _plan.p = c.plan; _planAplicarNombres(); _planRedibujar(); return; }   // el mismo cierre: nada que reiniciar
     _planPlayParar = true; _planPlayFallos = []; _planPlayRes = ''; _planPlayMsg = '';   // [v17.5]
-    _planLimpiarCapa(); _planWarn = null; _planMsg = ''; _planFlash = null; _planAbiertas = {}; _planActivoId = null; _planEditando = null; _planOcultos = new Set(); _planHorarioTxt = '';
+    _planLimpiarCapa(); _planWarn = null; _planMsg = ''; _planFlash = null; _planAbiertas = {}; _planActivoId = null; _planEditando = null; _planOcultos = new Set(); _planHorarioTxt = ''; _planNomIgn = new Set(); _planNomAbierto = false; _planNomC = null;
     if (!c || !c.plan || !Array.isArray(c.plan.ventanas) || c.plan.ventanas.length < 1) { _plan = null; _planMetodo = false; _planRedibujar(); try { _cwPaso2Estado(); } catch (e) { /* nada */ } return; }
     _plan = { c, p: c.plan, hechos: {}, confirm: {}, cubre: {}, ignora: {} };
     const g = _planRestaurar(c.id);
@@ -23021,7 +23215,7 @@ const _planCargarCierre = c => {
     try { refreshSmallPreview(); } catch (e) { /* nada */ }   // trae el horario real del Período para mostrarlo en el plan
     if (_planMetodo && c.plan.multi) showToast(`🧩 Este cierre tiene ${c.plan.ventanas.length} horarios distintos: sigue el PLAN DE CARGA, un tramo a la vez`, 5000, '#1565c0');
 };
-const _planDescartar = () => { _planPlayParar = true; _planPlayFallos = []; _planPlayRes = ''; _planPlayMsg = ''; _plan = null; _planWarn = null; _planFlash = null; _planAbiertas = {}; _planActivoId = null; _planEditando = null; _planOcultos = new Set(); _planMetodo = false; _planLimpiarCapa(); _planRedibujar(); try { _cwPaso2Estado(); } catch (e) { /* nada */ } };
+const _planDescartar = () => { _planPlayParar = true; _planPlayFallos = []; _planPlayRes = ''; _planPlayMsg = ''; _plan = null; _planWarn = null; _planFlash = null; _planAbiertas = {}; _planActivoId = null; _planEditando = null; _planOcultos = new Set(); _planMetodo = false; _planNomIgn = new Set(); _planNomC = null; _planLimpiarCapa(); _planRedibujar(); try { _cwPaso2Estado(); } catch (e) { /* nada */ } };
 // Escribe «calle, comuna» en el buscador del editor (el mismo mecanismo del botón «Cargar en Waze» de la web)
 const _planBuscarMapa = texto => {
     try {
@@ -23055,7 +23249,11 @@ const _planUbicar = async tid => {
         try { await sdk.Editing.setSelection({ selection: { ids, objectType: 'segment' } }); await _wmeSelection(); }
         catch (e) { log('plan ubicar, selección: ' + e.message); }
         showToast(`📍 ${_planTramoTxt(t)}: ${ids.length} segmento(s) seleccionados entre ${t.desde} y ${t.hasta}${deOtraCalzada ? ' (' + deOtraCalzada + ' de la otra calzada quedaron fuera)' : ''}${extraU ? ' · se completó el tramo hasta «' + t.hasta + '» (+' + extraU.n + ' segmento(s), ~' + extraU.m + ' m)' : ''}. Revisa en el mapa y pulsa «Tomar selección».`, 6000, '#1565c0');
-    } else if (loc.centro) showToast(`📍 ${_planTramoTxt(t)}: entre ${t.desde} y ${t.hasta}. No pude preseleccionar los segmentos (no están cargados): selecciónalos en el mapa.`, 6000, '#f57c00');
+    } else if (loc.centro) {
+        const dg = _planDiagnosticoNombres(t, loc);   // [v21.0] antes decía siempre «no están cargados»; muchas veces es un nombre mal escrito
+        if (dg) showToast(dg, 9000, '#f57c00');
+        else showToast(`📍 ${_planTramoTxt(t)}: entre ${t.desde} y ${t.hasta}. No pude preseleccionar los segmentos (no están cargados): selecciónalos en el mapa.`, 6000, '#f57c00');
+    }
     else {
         const q = `${_planTramoTxt(t)}${_plan.c.comuna ? ', ' + _plan.c.comuna : ''}`, ok = _planBuscarMapa(q);
         showToast(ok ? `📍 No la tengo cargada en el mapa: puse «${q}» en el buscador de Waze. Elige el resultado, ve al tramo y selecciónalo (o dibújalo con ✏️ / 🛣️ / ⬠).` : `📍 No encontré «${_planTramoTxt(t)}» en lo que Waze tiene cargado. Búscala en el mapa${_plan.c.comuna ? ' (' + _plan.c.comuna + ')' : ''} y selecciónala (o dibújala con ✏️ / 🛣️ / ⬠).`, 8000, '#f57c00');
@@ -23093,7 +23291,7 @@ const _planAplicarNombres = () => {
     } catch (e) { log('plan nombres: ' + e.message); }
 };
 // v = { calle, desde, hasta } nuevos · null = volver a los de la web
-const _planEditarNombres = (tid, v) => {
+const _planEditarNombres = (tid, v, calla) => {   // [v21.0] calla: sin aviso ni redibujo (se corrigen varios tramos seguidos)
     if (!_plan) return;
     const t = _plan.p.tramos.find(x => x.id === tid); if (!t) return;
     const sig0 = _planSig(t), o = t.orig || { calle: t.calle, desde: t.desde, hasta: t.hasta };
@@ -23106,7 +23304,9 @@ const _planEditarNombres = (tid, v) => {
         _planNombresGuardar(_plan.c.id, sig0, { calle: t.calle, desde: t.desde, hasta: t.hasta });
     }
     _planEdTid = null; _planPlayFallos = _planPlayFallos.filter(f => f.tid !== tid); _planWarn = null;
-    _planGuardar(); _planRedibujar(true);
+    _planGuardar(); _planNomC = null;
+    if (calla) return;
+    _planRedibujar(true);
     showToast('✏️ Nombres del tramo ' + _planNum(t) + ' actualizados: ' + t.calle + ' (' + t.desde + ' → ' + t.hasta + '). Vuelve a pulsar ▶ Play.', 5000, '#1565c0');
 };
 // nombres de calles para las sugerencias del cuadro de edición: los del último escaneo; si no hay, los que el mapa tiene cargados
@@ -23118,12 +23318,16 @@ const _planNombresLista = () => {
 // Formulario de corrección: los tres nombres; el que dio error sale marcado en rojo y trae sugerencias («¿Quisiste decir?») que, al pulsarlas, llenan el cuadro (se guarda con «Guardar»)
 const _planFormNombres = t => {
     const f = _planPlayFallos.find(x => x.tid === t.id), malos = new Set((f && f.campos) || []);
+    const dm = _planDudosoMap(t.id); dm.forEach((g, k) => malos.add(k));   // [v21.0]
+    const sugD = k => { const g = dm.get(k); return g && g.sug && g.sug[0]; };
+    const otrosT = new Set(); dm.forEach(g => g.campos.forEach(c => { if (c.tid !== t.id) otrosT.add(c.tid); }));
+    const otrosHtml = otrosT.size ? `<label class="wct-check" style="margin:6px 0 2px 2px"><input type="checkbox" data-plan-edotros="1" checked><span>Corregir también en los otros <b>${otrosT.size}</b> ${otrosT.size === 1 ? 'tramo' : 'tramos'} que dicen lo mismo <span class="wct-nom-mut">(${[...otrosT].map(id => _planNum(_plan.p.tramos.find(x => x.id === id))).sort((a, b) => a - b).join(' y ')})</span></span></label>` : '';
     const dl = _planNombresLista().slice(0, 800).map(n => `<option value="${escHtml(n)}">`).join('');
-    const fila = (k, et) => `<div class="wct-tj-campo${malos.has(k) ? ' malo' : ''}"><label>${et}</label><input type="text" data-plan-edf="${k}" list="wct-plan-dl" value="${escHtml(t[k] || '')}"${malos.has(k) ? ' title="Este es el nombre que no se encontró"' : ''}></div>`
-        + ((f && f.sug) || []).filter(s => s.campo === k).map(s => `<div class="wct-tj-sug"><span>¿Quisiste decir?</span>${s.nombres.map(n => `<button type="button" class="wct-tj-chip" data-plan-sug="${t.id}" data-campo="${k}" data-nombre="${escHtml(n)}">${escHtml(n)}</button>`).join('')}</div>`).join('');
+    const fila = (k, et) => `<div class="wct-tj-campo${malos.has(k) ? ' malo' : ''}"><label>${et}</label><input type="text" data-plan-edf="${k}" list="wct-plan-dl" value="${escHtml(sugD(k) ? sugD(k).nombre : (t[k] || ''))}"${sugD(k) ? ' class="sugerido" title="Dice «' + escHtml(t[k]) + '»: se propone esta calle (' + sugD(k).pct + '%). Guardar la acepta."' : (malos.has(k) ? ' title="Este es el nombre que no se encontró"' : '')}></div>`
+        + [...((f && f.sug) || []), ...((dm.has(k) && !((f && f.sug) || []).some(s => s.campo === k)) ? [{ campo: k, nombres: dm.get(k).sug.map(c => c.nombre) }] : [])].filter(s => s.campo === k).map(s => `<div class="wct-tj-sug"><span>¿Quisiste decir?</span>${s.nombres.map(n => `<button type="button" class="wct-tj-chip" data-plan-sug="${t.id}" data-campo="${k}" data-nombre="${escHtml(n)}">${escHtml(n)}</button>`).join('')}</div>`).join('');
     return `<div class="wct-tj-form"><h4>✏️ Corregir el tramo ${_planNum(t)} <span>(solo en tu extensión; la web no cambia)</span></h4>`
         + (malos.size ? '<div class="wct-tj-ruta" style="margin:0 0 4px">En rojo: lo que no se encontró.</div>' : '')
-        + fila('calle', 'Calle') + fila('desde', 'Desde') + fila('hasta', 'Hasta') + `<datalist id="wct-plan-dl">${dl}</datalist>`
+        + fila('calle', 'Calle') + fila('desde', 'Desde') + fila('hasta', 'Hasta') + otrosHtml + `<datalist id="wct-plan-dl">${dl}</datalist>`
         + `<div class="wct-plan-acc" style="margin-top:8px"><button type="button" class="wct-btn wct-btn-sm" data-plan-edsave="${t.id}">Guardar</button>`
         + (t.orig ? `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-edreset="${t.id}" title="Vuelve a lo que dice la web: ${escHtml(t.orig.calle)} (${escHtml(t.orig.desde)} → ${escHtml(t.orig.hasta)})">↺ Volver al original</button>` : '')
         + `<button type="button" class="wct-btn wct-btn-neutral wct-btn-sm" data-plan-edcancel="${t.id}">Cancelar</button></div></div>`;
@@ -23209,6 +23413,9 @@ const _planEsDistancia = s => /\b\d+([.,]\d+)?\s*(mts?|metros?|m|kms?|kil[oó]me
 const _planTokens = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(w => w.length > 2 && !/^(avenida|calle|pasaje|camino|general|gral|norte|sur|oriente|poniente|del|las|los|con|antes)$/.test(w));
 // calles del escaneo que se parecen al texto (comparten palabras): para ofrecer «¿quisiste decir…?»
 const _planSugerir = (texto, calles) => {
+    { const q = _planNormF(texto), pref = _planPrefijo(texto), fz = [];   // [v21.0] parecido de letras (≥ 80 %)
+      (calles || []).forEach(n => { const p = _planParecidoN(q, _planNormF(n)); if (p >= _PLAN_PARECIDO_MIN) fz.push({ n, p, pref: _planPrefijo(n) === pref }); });
+      if (fz.length) { fz.sort((a, b) => b.p - a.p || (b.pref - a.pref) || a.n.length - b.n.length); return [...new Set(fz.map(x => x.n))].slice(0, 4); } }
     const tk = _planTokens(texto); if (!tk.length) return [];
     const sc = [];
     calles.forEach(n => { const ct = _planTokens(n); if (!ct.length) return; const k = tk.filter(w => ct.some(c => c === w || c.includes(w) || w.includes(c))).length; if (k) sc.push({ n, s: k / tk.length - Math.abs(ct.length - tk.length) * 0.05 }); });
@@ -23468,7 +23675,7 @@ const _planTomar = async (tid, forzar, quitar) => {
         const msgs = [];
         if (ajenos.length) msgs.push(`${ajenos.length} segmento(s) son de otra calle: ${[...new Set(ajenos.map(id => getSegName(id)))].join(', ')}. El tramo es «${_planTramoTxt(t)}».`);
         if (fuera.length) msgs.push(`${fuera.length} segmento(s) quedan fuera del tramo (entre ${t.desde} y ${t.hasta}).`);
-        if (msgs.length) return aviso(msgs, false, { quitar: true, malos: [...ajenos, ...fuera] });
+        if (msgs.length) return aviso(msgs, false, { quitar: true, malos: [...ajenos, ...fuera], ajenos, fuera });
     }
     // Calzada: se quitan solos los de un solo sentido que van al revés (otra calzada); los de doble sentido y los perpendiculares se dejan. «Tomar igual» salta este filtro.
     if (!forzar && _planUnSentido(t)) {
@@ -23678,7 +23885,18 @@ const _planEscuchas = () => {
         if (b.dataset.planCubsoltar) { if (_plan) { delete _plan.cubre[Number(b.dataset.planCubsoltar)]; _planGuardar(); _planRedibujar(true); } return; }
         if (b.dataset.planEd) { const id = Number(b.dataset.planEd); _planEdTid = _planEdTid === id ? null : id; _planRedibujar(true); return; }   // [v17.5] ✏️ corregir nombres
         if (b.dataset.planEdcancel) { _planEdTid = null; _planRedibujar(true); return; }
-        if (b.dataset.planEdsave) { const f = {}; host.querySelectorAll('[data-plan-edf]').forEach(i => { f[i.dataset.planEdf] = i.value; }); _planEditarNombres(Number(b.dataset.planEdsave), f); return; }
+        if (b.dataset.planNomusar) { const g = _planGruposVisibles().find(x => x.key === b.dataset.planNomusar); if (g && g.sug[0]) { _planAplicarNombre(g.key, g.sug[0].nombre); _planRedibujar(true); } return; }   // [v21.0]
+        if (b.dataset.planNomtodas) { _planGruposVisibles().forEach(g => { if (g.sug[0]) _planAplicarNombre(g.key, g.sug[0].nombre); }); _planNomC = null; _planRedibujar(true); return; }
+        if (b.dataset.planNomign) { _planGruposVisibles().forEach(g => _planNomIgn.add(g.key)); _planRedibujar(true); return; }
+        if (b.dataset.planNommas) { _planNomAbierto = !_planNomAbierto; _planRedibujar(true); return; }
+        if (b.dataset.planEdsave) {
+            const f = {}; host.querySelectorAll('[data-plan-edf]').forEach(i => { f[i.dataset.planEdf] = i.value; });
+            const tid = Number(b.dataset.planEdsave), t0 = _plan && _plan.p.tramos.find(x => x.id === tid), cb = host.querySelector('[data-plan-edotros]');
+            const cambios = (t0 && cb && cb.checked) ? ['calle', 'desde', 'hasta'].filter(k => String(f[k] || '').trim() && _planNormF(f[k]) !== _planNormF(t0[k])).map(k => ({ key: _planNormF(t0[k]), nuevo: String(f[k]).trim() })) : [];   // [v21.0] «corregir también en los otros tramos»
+            _planEditarNombres(tid, f, cambios.length > 0);
+            if (cambios.length) { cambios.forEach(c => _planAplicarNombre(c.key, c.nuevo, tid)); _planEdTid = null; _planRedibujar(true); }
+            return;
+        }
         if (b.dataset.planEdreset) { _planEditarNombres(Number(b.dataset.planEdreset), null); return; }
         if (b.dataset.planSug) { const inp = host.querySelector('[data-plan-edf="' + b.dataset.campo + '"]'); if (inp) { inp.value = b.dataset.nombre; inp.focus(); return; } const t = _plan && _plan.p.tramos.find(x => x.id === Number(b.dataset.planSug)); if (t) { const f = { calle: t.calle, desde: t.desde, hasta: t.hasta }; f[b.dataset.campo] = b.dataset.nombre; _planEditarNombres(t.id, f); } return; }
         if (b.dataset.planIrfallo) { const f = _planPlayFallos.find(x => { const tt = _plan && _plan.p.tramos.find(y => y.id === x.tid); return tt && !_planListo(tt); }); if (f) { _planActivoId = f.tid; _planWarn = null; _planScroll = true; _planRedibujar(true); } return; }
